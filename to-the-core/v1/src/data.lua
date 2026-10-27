@@ -1,0 +1,7 @@
+require("prototypes.items")
+require("prototypes.core_drill")
+require("prototypes.bore")
+require("prototypes.tunnel")
+require("prototypes.transfer")
+require("prototypes.technologies")
+require("prototypes.world")

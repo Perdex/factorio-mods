@@ -1,0 +1,20 @@
+{
+    "name": "Aisodoi-test",
+    "version": "0.0.0",
+    "title": "Test mod",
+    "author": "Perdex",
+    "homepage": "https://github.com/Perdex/factorio-mods",
+    "description": "Drill down to the core of the planet to win the game. Replaces science with drilling!",
+    "factorio_version": "2.0",
+    "dependencies": [
+      "base >= 2.0.12",
+      "? space-age"
+    ],
+    "quality_required": false,
+    "rail_bridges_required": false,
+    "space_travel_required": false,
+    "spoiling_required": false,
+    "freezing_required": false,
+    "segmented_units_required": false,
+    "expansion_shaders_required": false
+  }
