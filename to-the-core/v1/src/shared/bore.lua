@@ -22,6 +22,15 @@ local bore = {
   -- supply lane the same way.
   pipe_item = "pipe",
   pipe_stock_limit = 10,
+  -- A hidden constant combinator wired to the bore puts its own signals on
+  -- the bore's circuit network: hits remaining and a one-tick pulse when it
+  -- moves (contents, ingredients and fuel are the furnace's own circuit
+  -- settings). Turn signals on that network turn it as it moves.
+  signal_entity = "ttc-bore-signals",
+  hits_signal = {type = "virtual", name = "signal-H"},
+  moved_signal = {type = "virtual", name = "signal-check"},
+  clockwise_signal = {type = "virtual", name = "signal-clockwise-circle-arrow"},
+  anticlockwise_signal = {type = "virtual", name = "signal-anticlockwise-circle-arrow"},
   -- Drill heads wear out like repair packs: a head lasts `durability` hits,
   -- each taking `hit_time` seconds at crafting speed 1. A dig recipe craft is
   -- one head's whole life, so its progress bar shows the head wearing down.

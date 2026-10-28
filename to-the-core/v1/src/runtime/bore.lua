@@ -2,7 +2,8 @@
 -- burning fuel; the inserted head picks the recipe (runtime/wear.lua). Each
 -- hit brings out some of the floor's rock. One craft is one head's whole life: its hits land on the
 -- wall ahead as the craft progresses, and after the layer's hits_per_tile hits
--- the bore breaks through and advances one tile (mid-craft if need be),
+-- the bore breaks through and advances one tile (mid-craft if need be; whole
+-- hits left over don't carry to the next tile),
 -- opening the tunnel in front, laying a supply lane and an output lane behind
 -- (from belts it pulls off the supply lane, if it has any), and moving the
 -- hidden loaders that connect those lanes to the bore.
@@ -218,6 +219,81 @@ local function carry_wires(entity, targets, belt)
   end
 end
 
+-- Circuit signals -------------------------------------------------------------
+
+local function signal_value(signal)
+  return {type = signal.type or "item", name = signal.name, quality = "normal"}
+end
+
+local function pulses()
+  storage.ttc.bore_pulses = storage.ttc.bore_pulses or {}
+  return storage.ttc.bore_pulses
+end
+
+-- The hidden combinator carrying the bore's own signals, wired to both of
+-- the bore's circuit connectors. Created on demand, so older bores get one.
+local function signal_section(state)
+  local entity = state.entity
+  local combinator = state.signals
+  if not (combinator and combinator.valid) then
+    combinator = entity.surface.create_entity({
+      name = bore_config.signal_entity,
+      position = entity.position,
+      force = entity.force
+    })
+    combinator.destructible = false
+    for _, id in ipairs(wire_ids) do
+      combinator.get_wire_connector(id, true).connect_to(entity.get_wire_connector(id, true), false,
+        defines.wire_origin.script)
+    end
+    state.signals = combinator
+  end
+  local behavior = combinator.get_control_behavior()
+  return behavior.sections_count > 0 and behavior.get_section(1) or behavior.add_section()
+end
+
+-- Slot 1: hits remaining on the face ahead. Slot 2: the pulse when it moves.
+local function output_hits(state, remaining)
+  local section = signal_section(state)
+  if state.read_hits then
+    section.set_slot(1, {value = signal_value(state.hits_signal), min = remaining})
+  else
+    section.clear_slot(1)
+  end
+end
+
+local function pulse_moved(state)
+  if not state.read_moved then
+    return
+  end
+  signal_section(state).set_slot(2, {value = signal_value(state.moved_signal), min = 1})
+  pulses()[state.entity.unit_number] = game.tick
+end
+
+-- Ends the moved pulses a tick after they started.
+function bore.end_pulses()
+  local pending = pulses()
+  if not next(pending) then
+    return
+  end
+  for unit_number, tick in pairs(pending) do
+    if game.tick > tick then
+      local state = bores()[unit_number]
+      if state and state.signals and state.signals.valid then
+        signal_section(state).clear_slot(2)
+      end
+      pending[unit_number] = nil
+    end
+  end
+end
+
+-- Net turn signal on the bore's network: clockwise against anticlockwise.
+local function turn_wanted(entity)
+  local red, green = defines.wire_connector_id.circuit_red, defines.wire_connector_id.circuit_green
+  return entity.get_signal(bore_config.clockwise_signal, red, green)
+    - entity.get_signal(bore_config.anticlockwise_signal, red, green)
+end
+
 local function front_blocker(entity, layer)
   local surface = entity.surface
   local tiles = front_tiles(entity)
@@ -249,32 +325,38 @@ local function front_blocker(entity, layer)
   end
 end
 
--- Hits needed to advance: a full wall's worth, or one if the way is already open.
--- The rock ahead: hits needed to break through, what each hit brings out, and
--- the vein it belongs to, if any (the hardest of the two tiles counts). One
--- hit is enough where the way is already open.
+-- The rock ahead, tile by tile: each solid tile in front of the bore, the
+-- hits it takes to break (more in a vein) and what each hit brings out.
 local function rock_ahead(entity, layer)
-  local solid, vein = false, nil
+  local rock = {}
   for _, position in ipairs(front_tiles(entity)) do
     if tunnel.is_void(entity.surface, position) then
-      solid = true
-      local found = veins.at(entity.surface, position)
-      if found and (not vein or found.hardness > vein.hardness) then
-        vein = found
-      end
+      local vein = veins.at(entity.surface, position)
+      rock[#rock + 1] = {
+        position = position,
+        vein = vein,
+        needed = layer.hits_per_tile * (vein and vein.hardness or 1),
+        drops = vein and vein.drops or layer.drops
+      }
     end
   end
-  if not solid then
-    return 1, layer.drops
-  end
-  if vein then
-    return layer.hits_per_tile * vein.hardness, vein.drops, vein
-  end
-  return layer.hits_per_tile, layer.drops
+  return rock
 end
 
+-- Every hit lands on the whole face, so softer tiles give way first and the
+-- bore advances once the hardest one breaks. Returns the hits that takes, the
+-- hardest tile (a vein wins a tie) and the rock ahead. One hit is enough
+-- where the way is already open.
 local function hits_needed(entity, layer)
-  return (rock_ahead(entity, layer))
+  local rock = rock_ahead(entity, layer)
+  local hardest
+  for _, tile in ipairs(rock) do
+    if not hardest or tile.needed > hardest.needed
+      or (tile.needed == hardest.needed and tile.vein and not hardest.vein) then
+      hardest = tile
+    end
+  end
+  return hardest and hardest.needed or 1, hardest, rock
 end
 
 -- Chips of rock flying off the wall ahead, one burst per hit.
@@ -307,17 +389,11 @@ local function unlock_discoveries(entity, layer)
   end
 end
 
--- Moves the bore one tile forward. Returns false if it could not move.
-local function advance(state, layer)
-  local entity = state.entity
-  local surface = entity.surface
-  local forward = forward_vectors[entity.direction]
-
-  -- Breaking into a vein that holds a resource (an oil pocket) leaves it
-  -- there, once per vein.
-  local front = front_tiles(entity)
+-- Opens the rock at positions. Breaking into a vein that holds a resource (an
+-- oil pocket) leaves it there, once per vein.
+local function break_rock(surface, positions, layer)
   local springs = {}
-  for _, position in ipairs(front) do
+  for _, position in ipairs(positions) do
     if tunnel.is_void(surface, position) then
       local vein, key = veins.at(surface, position)
       if vein and vein.resource then
@@ -325,7 +401,7 @@ local function advance(state, layer)
       end
     end
   end
-  tunnel.open(surface, front, layer.tunnel_tile)
+  tunnel.open(surface, positions, layer.tunnel_tile)
   storage.ttc.vein_resources = storage.ttc.vein_resources or {}
   for _, spring in ipairs(springs) do
     if not storage.ttc.vein_resources[spring.key] then
@@ -337,6 +413,13 @@ local function advance(state, layer)
       })
     end
   end
+end
+
+-- Moves the bore one tile forward. Returns false if it could not move.
+local function advance(state, layer)
+  local entity = state.entity
+  local forward = forward_vectors[entity.direction]
+  break_rock(entity.surface, front_tiles(entity), layer)
 
   local input_position, output_position = rear_tiles(entity)
   local wires = circuit_targets(entity)
@@ -347,6 +430,9 @@ local function advance(state, layer)
   }) then
     attach_loaders(state)
     return false
+  end
+  if state.signals and state.signals.valid then
+    state.signals.teleport(entity.position)
   end
 
   -- Without belts (no iron yet) the tunnel is left bare.
@@ -378,6 +464,8 @@ function bore.register(entity)
   state.lays_pipes = bore_config.tiers[entity.name].lays_pipes
   state.lays_belts = bore_config.tiers[entity.name].lays_belts
   state.coolant = bore_config.tiers[entity.name].coolant
+  state.hits_signal = bore_config.hits_signal
+  state.moved_signal = bore_config.moved_signal
   bores()[entity.unit_number] = state
   attach_loaders(state)
 end
@@ -393,13 +481,18 @@ function bore.unregister(entity, buffer)
       buffer.insert({name = bore_config.pipe_item, count = state.pipe_stock})
     end
     destroy_loaders(state)
+    if state.signals and state.signals.valid then
+      state.signals.destroy()
+    end
     bores()[entity.unit_number] = nil
   end
 end
 
+-- A turned bore faces a new wall and starts on it from scratch.
 function bore.on_rotated(entity)
   local state = bores()[entity.unit_number]
   if state then
+    state.hits = 0
     destroy_loaders(state)
     attach_loaders(state)
   end
@@ -407,7 +500,8 @@ end
 
 -- While running, shows wall progress in place of the plain "Working" status.
 local function progress_label(state, layer)
-  local needed, _, vein = rock_ahead(state.entity, layer)
+  local needed, hardest = hits_needed(state.entity, layer)
+  local vein = hardest and hardest.vein
   local hits = math.floor(state.hits)
   local vein_name = vein and {"ttc-vein-name." .. vein.name}
   if state.lays_belts then
@@ -432,6 +526,136 @@ local function show_progress(state, layer)
     }
   else
     entity.custom_status = nil
+  end
+end
+
+-- Wall bar ---------------------------------------------------------------------
+
+-- A panel beside the bore's window, like the core drill's depth bar: the
+-- crafting bar there is the drill head's wear, so the wall ahead gets its own
+-- bar, with the vein's resource shown when the bore is in one.
+local wall_frame = "ttc-bore-wall"
+
+local function wall_panel(player)
+  local frame = player.gui.relative[wall_frame]
+  if not frame then
+    frame = player.gui.relative.add({
+      type = "frame",
+      name = wall_frame,
+      caption = {"ttc.bore-wall-title"},
+      direction = "vertical",
+      anchor = {
+        gui = defines.relative_gui_type.furnace_gui,
+        position = defines.relative_gui_position.right,
+        names = bore_names
+      }
+    })
+    local row = frame.add({type = "flow", name = "row", direction = "horizontal"})
+    row.style.vertical_align = "center"
+    row.add({type = "sprite", name = "vein"})
+    row.add({type = "label", name = "wall"})
+    frame.add({type = "progressbar", name = "bar"}).style.width = 220
+    frame.add({type = "line"})
+    frame.add({type = "label", caption = {"ttc.bore-circuit-title"}, style = "caption_label"})
+    for _, option in ipairs({"hits", "moved"}) do
+      local option_row = frame.add({type = "flow", name = option, direction = "horizontal"})
+      option_row.style.vertical_align = "center"
+      option_row.add({type = "checkbox", name = "ttc-bore-read-" .. option, state = false,
+        caption = {"ttc.bore-read-" .. option}, tags = {option = option}})
+      option_row.add({type = "empty-widget"}).style.horizontally_stretchable = true
+      option_row.add({type = "choose-elem-button", name = "ttc-bore-signal-" .. option, elem_type = "signal",
+        style = "slot_button_in_shallow_frame", tags = {option = option}})
+    end
+    local hint = frame.add({type = "label", caption = {"ttc.bore-turn-hint"}})
+    hint.style.single_line = false
+    hint.style.maximal_width = 220
+  end
+  return frame
+end
+
+local function show_wall(player, entity)
+  local frame = wall_panel(player)
+  local state = bores()[entity.unit_number]
+  local layer = layers_by_surface[entity.surface.name]
+  local row = frame.row
+  if state then
+    for _, option in ipairs({"hits", "moved"}) do
+      frame[option]["ttc-bore-read-" .. option].state = state["read_" .. option] or false
+      frame[option]["ttc-bore-signal-" .. option].elem_value = state[option .. "_signal"]
+    end
+  end
+  if not (state and layer) then
+    row.vein.visible = false
+    row.wall.caption = {"ttc-status.not-underground"}
+    frame.bar.value = 0
+    return
+  end
+  local needed, hardest = hits_needed(entity, layer)
+  local vein = hardest and hardest.vein
+  local hits = math.floor(state.hits)
+  row.vein.visible = vein ~= nil
+  if vein then
+    row.vein.sprite = veins.sprite(vein)
+    row.wall.caption = {"ttc.bore-wall-vein", hits, needed, {"ttc-vein-name." .. vein.name}}
+  else
+    row.wall.caption = {"ttc.bore-wall", hits, needed}
+  end
+  frame.bar.value = math.min(1, state.hits / needed)
+end
+
+function bore.on_gui_opened(event)
+  local entity = event.entity
+  if entity and entity.valid and bore.handles(entity) then
+    show_wall(game.get_player(event.player_index), entity)
+  end
+end
+
+-- The circuit options in the panel apply to the bore the player has open.
+local function opened_state(player)
+  local opened = player.opened
+  if player.opened_gui_type == defines.gui_type.entity and opened and opened.valid and bore.handles(opened) then
+    return bores()[opened.unit_number]
+  end
+end
+
+function bore.on_gui_changed(event)
+  local element = event.element
+  local option = element.valid and element.tags.option
+  if not (option and element.name:find("^ttc%-bore%-")) then
+    return
+  end
+  local state = opened_state(game.get_player(event.player_index))
+  if not state then
+    return
+  end
+  if element.type == "checkbox" then
+    state["read_" .. option] = element.state
+  elseif element.elem_value then
+    state[option .. "_signal"] = element.elem_value
+  else
+    -- An emptied signal button falls back to the default signal.
+    state[option .. "_signal"] = bore_config[option .. "_signal"]
+  end
+  local layer = layers_by_surface[state.entity.surface.name]
+  if option == "hits" and layer then
+    output_hits(state, math.ceil(hits_needed(state.entity, layer) - state.hits))
+  end
+end
+
+function bore.set_signals(unit_number, options)
+  local state = bores()[unit_number]
+  if state then
+    state.read_hits = options.read_hits
+    state.read_moved = options.read_moved
+  end
+end
+
+local function refresh_wall_panels()
+  for _, player in pairs(game.connected_players) do
+    local opened = player.opened
+    if player.opened_gui_type == defines.gui_type.entity and opened and opened.valid and bore.handles(opened) then
+      show_wall(player, opened)
+    end
   end
 end
 
@@ -464,8 +688,8 @@ local function update(state)
   state.hits = state.hits + dealt
   if whole > 0 then
     hit_effect(entity)
-    local _, drops = rock_ahead(entity, layer)
-    wear.roll(state, drops, whole)
+    local _, hardest = hits_needed(entity, layer)
+    wear.roll(state, hardest and hardest.drops or layer.drops, whole)
   end
   local delivered_all, delivered = wear.deliver(state, entity)
   if delivered then
@@ -485,18 +709,36 @@ local function update(state)
       return
     end
     -- With a little slack: summed fractional progress drifts a hair short.
-    local needed = hits_needed(entity, layer)
+    local needed, _, rock = hits_needed(entity, layer)
     if state.hits + 0.001 < needed then
+      local broken = {}
+      for _, tile in ipairs(rock) do
+        if state.hits + 0.001 >= tile.needed then
+          broken[#broken + 1] = tile.position
+        end
+      end
+      if #broken > 0 then
+        break_rock(entity.surface, broken, layer)
+      end
       break
     end
     if not advance(state, layer) then
       set_status(state, "front-blocked")
       return
     end
-    state.hits = state.hits - needed
+    -- Only the part of a hit already under way carries over.
+    state.hits = math.max(0, state.hits - needed) % 1
+    pulse_moved(state)
+    -- Turn signals turn it as it moves (a Mk3 only where its new footprint
+    -- fits), facing a new wall.
+    local turn = turn_wanted(entity)
+    if turn ~= 0 and entity.rotate({reverse = turn < 0}) then
+      bore.on_rotated(entity)
+    end
   end
 
   attach_loaders(state)
+  output_hits(state, math.ceil(hits_needed(entity, layer) - state.hits))
   set_status(state, nil)
   show_progress(state, layer)
 end
@@ -507,9 +749,13 @@ function bore.tick()
       update(state)
     else
       destroy_loaders(state)
+      if state.signals and state.signals.valid then
+        state.signals.destroy()
+      end
       bores()[unit_number] = nil
     end
   end
+  refresh_wall_panels()
 end
 
 -- Rebuilds bore state from the map, e.g. after the bore prototype changed type.

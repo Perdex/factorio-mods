@@ -17,7 +17,7 @@ local function check(name, ok, detail)
 end
 
 local S, B, D, M, W, C, chute, pipe, stray, combinator, reinforced, obstacle, V, vein_tile
-local lift, hot_mk2, hot_mk3, oil_tile, oil_bore, beside, grinder, winnower
+local lift, hot_mk2, hot_mk3, oil_tile, oil_bore, beside, grinder, winnower, T, pulses
 local drill_position = {x = 100.5, y = 100.5}
 local east = defines.direction.east
 
@@ -74,6 +74,10 @@ end
 
 script.on_event(defines.events.on_tick, function(event)
   local tick = event.tick
+  if T and T.valid and T.get_signal({type = "virtual", name = "signal-check"},
+    defines.wire_connector_id.circuit_red) > 0 then
+    pulses = pulses + 1
+  end
   if tick == 1 then
     -- Veins are tested on their own; the rest of the test digs plain rock.
     remote.call("to-the-core", "set_veins", false)
@@ -94,8 +98,8 @@ script.on_event(defines.events.on_tick, function(event)
       return S.can_place_entity({name = "ttc-mk1-bore", position = position, direction = direction, force = "player"})
     end
     check("bore placeable at edge facing rock", can({29, 0}, east))
-    check("bore not placeable mid-platform", not can({24, 0}, east))
-    check("bore not placeable facing platform", not can({19, 0}, east))
+    check("bore placeable mid-platform", can({24, 0}, east))
+    check("bore placeable facing open ground", can({19, 0}, east))
     check("bore not placeable over void", not can({31, 0}, east))
 
     -- Core drill on the starting surface: the 200-hit shaft takes 20 wooden
@@ -443,13 +447,29 @@ script.on_event(defines.events.on_tick, function(event)
   elseif tick == 9940 then
     M.insert({name = "coal", count = 50})
   elseif tick == 10001 then
-    -- Find a stone vein out east and set a bore up facing it.
+    -- A bore in a 2-tall corridor, told to turn clockwise: it crosses one
+    -- open tile, turns south and starts on the rock there.
+    tunnel.open_area(S, {x = 60, y = 44}, {x = 65, y = 45}, "stone-path")
+    T = S.create_entity({name = "ttc-mk1-bore", position = {61, 45}, direction = east,
+      force = "player", raise_built = true})
+    T.insert({name = "ttc-clay-drill-head", count = 5})
+    T.insert({name = "coal", count = 10})
+    local turner = S.create_entity({name = "constant-combinator", position = {58.5, 44.5}, force = "player"})
+    turner.get_control_behavior().add_section().set_slot(1,
+      {value = {type = "virtual", name = "signal-clockwise-circle-arrow", quality = "normal"}, min = 1})
+    turner.get_wire_connector(defines.wire_connector_id.circuit_red, true)
+      .connect_to(T.get_wire_connector(defines.wire_connector_id.circuit_red, true), false)
+    remote.call("to-the-core", "set_bore_signals", T.unit_number, {read_hits = true, read_moved = true})
+    pulses = 0
+    -- Find a stone vein out east and set a bore up facing it, with plain
+    -- rock beside the vein on the other half of the face.
     remote.call("to-the-core", "set_veins", true)
     for x = 200, 400 do
       for y = -40, 40 do
         if not vein_tile and remote.call("to-the-core", "vein_at", S.index, {x = x, y = y}) == "stone"
           and not remote.call("to-the-core", "vein_at", S.index, {x = x - 2, y = y})
-          and not remote.call("to-the-core", "vein_at", S.index, {x = x - 1, y = y}) then
+          and not remote.call("to-the-core", "vein_at", S.index, {x = x - 1, y = y})
+          and not remote.call("to-the-core", "vein_at", S.index, {x = x, y = y + 1}) then
           vein_tile = {x = x, y = y}
         end
       end
@@ -465,7 +485,9 @@ script.on_event(defines.events.on_tick, function(event)
       tunnel.open(S, body, "dirt-7")
       V = S.create_entity({name = "ttc-mk1-bore", position = {vein_tile.x - 1, vein_tile.y + 1}, direction = east,
         force = "player", raise_built = true})
-      V.insert({name = "ttc-clay-drill-head", count = 5})
+      -- Iron heads: 3 hits a second, so the plain rock (40 hits) breaks
+      -- within 15 s while the vein (800) holds.
+      V.insert({name = "ttc-iron-drill-head", count = 5})
       V.insert({name = "coal", count = 10})
       check("exposed vein rock shows its ore", S.find_entity("ttc-vein-stone", {vein_tile.x + 0.5, vein_tile.y + 0.5}) ~= nil)
     end
@@ -539,7 +561,23 @@ script.on_event(defines.events.on_tick, function(event)
         cooled.get_output_inventory().clear()
       end
     end
+    -- The vein bore's stone, once its drops have been checked.
+    if V and V.valid and tick > 10301 then
+      V.get_output_inventory().clear()
+    end
   elseif tick == 11001 then
+    check("a turn signal turns the bore as it moves", T and T.direction == defines.direction.south
+      and T.position.x == 62, T and {T.direction, T.position})
+    local remaining = T and T.get_signal({type = "virtual", name = "signal-H"}, defines.wire_connector_id.circuit_red)
+    check("the bore outputs the hits remaining", remaining and remaining > 0 and remaining <= 40, remaining)
+    check("the bore pulses for one tick when it moves", pulses == 1, pulses)
+    local plain = vein_tile and {x = vein_tile.x, y = vein_tile.y + 1}
+    check("plain rock beside a vein breaks first", plain and not tunnel.is_void(S, plain)
+      and tunnel.is_void(S, vein_tile), V and V.custom_status and V.custom_status.label)
+    local label = V and V.custom_status and V.custom_status.label
+    check("the bore keeps at the vein", V and V.position.x == vein_tile.x - 1
+      and label and label[1] == "ttc-status.digging-vein" and tonumber(label[2]) > 40 and label[3] == "800",
+      serpent.line(label))
     local outlet = game.surfaces.nauvis.find_entity("ttc-freight-lift-outlet", {99.5, 104.5})
     check("freight lift carries items up", lift and outlet
       and outlet.get_inventory(defines.inventory.chest).get_item_count("stone") == 30, outlet and outlet.position)

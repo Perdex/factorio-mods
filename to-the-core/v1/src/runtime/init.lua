@@ -145,6 +145,10 @@ remote.add_interface("to-the-core", {
     local vein = veins.at(game.surfaces[surface_index], position)
     return vein and vein.name
   end,
+  -- What the panel's circuit options set: options = {read_hits, read_moved}.
+  set_bore_signals = function(unit_number, options)
+    bore.set_signals(unit_number, options)
+  end,
   travel_target = function(surface_index, position, direction)
     local surface, target = shaft.travel_target(game.surfaces[surface_index], position, direction)
     return surface and {surface_index = surface.index, position = target}
@@ -172,8 +176,16 @@ script.on_event({
 }, on_removed)
 script.on_event(defines.events.on_player_rotated_entity, on_rotated)
 script.on_event(defines.events.on_research_finished, progression.on_research_finished)
-script.on_event(defines.events.on_gui_opened, shaft.on_gui_opened)
+script.on_event(defines.events.on_gui_opened, function(event)
+  shaft.on_gui_opened(event)
+  bore.on_gui_opened(event)
+end)
 script.on_event(defines.events.on_chunk_generated, layers.on_chunk_generated)
+script.on_event({
+  defines.events.on_gui_checked_state_changed,
+  defines.events.on_gui_elem_changed
+}, bore.on_gui_changed)
+script.on_event(defines.events.on_tick, bore.end_pulses)
 script.on_nth_tick(10, function()
   bore.tick()
   transfer.tick()

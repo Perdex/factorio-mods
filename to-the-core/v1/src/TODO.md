@@ -41,7 +41,8 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
   80, reinforced 500), so veins are long but feasible projects.
 - [x] Mk1/Mk2 are 2x2, rotatable (a connectionless fluid box keeps a square
   furnace rotatable), 4-direction sprites with the cutter overlapping the wall
-  ahead; placeable only at the edge of open ground facing rock.
+  ahead; placeable anywhere on open ground. Each hit lands on the whole
+  face: softer tiles (plain rock beside a vein) break first.
 - [x] Mk3 is 3 wide and 2 long with two cutters: supply loader, water inlet
   and output loader across its back. It lays a pipe behind its inlet per tile
   from a pipe stock of up to 10, pulled off the supply lane (returned when
@@ -55,7 +56,14 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
   off the supply lane; without belts it leaves a bare tunnel. Hidden loaders
   follow its rear.
 - [x] Circuit connection; its wires follow the bore along the supply lane.
+- [x] Circuit control: turn signals (clockwise/anticlockwise arrows) turn it
+  on each step; it can output hits remaining (signal H) and a one-tick pulse
+  when it moves, set in the wall panel. Contents, ingredients and fuel are
+  the furnace's own circuit settings.
 - [x] Pauses with a status when the tiles ahead are blocked.
+- [x] Wall bar panel beside the bore's window (like the core drill's depth
+  bar), with the vein's icon when digging one. Each step (and turning)
+  starts the hit count over.
 - [ ] Belts that can't be laid (occupied tile) are spilled on the ground.
 - [ ] Meeting another tunnel or the map edge; joining belt lanes cleanly.
 - [ ] Turning: rotating mid-tunnel breaks the belt lanes.
@@ -74,7 +82,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 - [ ] Floors 6+ for the second half of the game.
 - [x] Ore veins in the rock (`veins` per floor, `runtime/veins.lua`): placed
   from the map seed, shown by base ore sprites on exposed rock, 20x harder,
-  rich in their resource. Floor 1 stone; floor 2 stone and iron; floor 3
+  rich in their resource, with an icon on every third exposed tile. Floor 1 stone; floor 2 stone and iron; floor 3
   copper, coal and iron. "Ore veins" setting; remote `set_veins`/`vein_at`.
 - [ ] Rare finds (geodes, artifacts).
 - [x] Heat on floor 5: bores without coolant stop.
@@ -151,7 +159,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 
 ## 7. Tooling and testing
 
-- [x] Headless engine test (`v1/tests/run.sh`, 104 checks): tunnels and walls,
+- [x] Headless engine test (`v1/tests/run.sh`, 109 checks): tunnels and walls,
   bore placement, digging, belts, wires, core drill shafts to floor 2, stairs,
   transfers, crash site, technologies.
 - [x] `deploy_local.sh` links `src` into the mods folder.

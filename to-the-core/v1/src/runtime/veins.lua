@@ -67,4 +67,12 @@ function veins.at(surface, position)
   end
 end
 
+-- The sprite of what a vein holds: its ore, or the fluid of a pocket.
+function veins.sprite(vein)
+  if prototypes.item[vein.name] then
+    return "item/" .. vein.name
+  end
+  return "fluid/" .. vein.name
+end
+
 return veins

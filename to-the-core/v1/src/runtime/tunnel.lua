@@ -110,6 +110,18 @@ local function rebuild_walls(surface, center)
     local ore = surface.create_entity({name = wall_config.vein_name(vein.name), position = center})
     local x, y = math.floor(center.x), math.floor(center.y)
     ore.graphics_variation = math.floor(veins.hash(x, y, 17) * wall_config.vein_variations) + 1
+    -- The ore sits behind the cliff faces, so every third tile along a face
+    -- also carries the vein's icon; it goes when the ore does.
+    if (x + y) % 3 == 0 then
+      rendering.draw_sprite({
+        sprite = veins.sprite(vein),
+        target = ore,
+        surface = surface,
+        x_scale = 0.5,
+        y_scale = 0.5,
+        render_layer = "higher-object-under"
+      })
+    end
   end
 end
 

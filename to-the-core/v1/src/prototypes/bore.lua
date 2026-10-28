@@ -63,19 +63,14 @@ local function bore_entity(name, tier)
       dying_explosion = "medium-explosion",
       collision_box = {{-half + 0.1, -0.9}, {half - 0.1, 0.9}},
       selection_box = {{-half, -1}, {half, 1}},
-      -- Like an offshore pump: the body stands on open ground and the tiles in
-      -- front (rotated with the bore) must be solid rock to dig into.
+      -- Stands anywhere on open ground; it crosses open ground one tile per
+      -- hit until it meets rock.
       tile_buildability_rules = {
         {
           area = {{-half + 0.1, -0.9}, {half - 0.1, 0.9}},
           required_tiles = {layers = {ground_tile = true}},
           colliding_tiles = {layers = {out_of_map = true}},
           remove_on_collision = true
-        },
-        {
-          area = {{-half + 0.1, -1.9}, {half - 0.1, -1.1}},
-          required_tiles = {layers = {out_of_map = true}},
-          colliding_tiles = {layers = {}}
         }
       },
       crafting_categories = {bore.recipe_category},
@@ -226,3 +221,22 @@ for head_name, head in pairs(bore.heads) do
     }
   })
 end
+
+-- The hidden combinator that outputs a bore's own signals (shared/bore.lua).
+local signals = table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
+signals.name = bore.signal_entity
+signals.hidden = true
+signals.flags = {"placeable-off-grid", "not-on-map", "not-blueprintable", "not-deconstructable", "hide-alt-info"}
+signals.selectable_in_game = false
+signals.minable = nil
+signals.fast_replaceable_group = nil
+signals.next_upgrade = nil
+signals.corpse = nil
+signals.dying_explosion = nil
+signals.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
+signals.collision_mask = {layers = {}}
+signals.selection_box = nil
+signals.sprites = util.empty_sprite()
+signals.activity_led_sprites = util.empty_sprite()
+signals.draw_circuit_wires = false
+data:extend({signals})

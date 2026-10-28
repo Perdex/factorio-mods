@@ -27,8 +27,8 @@ and drill heads.
    middle of the same stairs on the other floor. Floor 1 reveals
    the tunnel bore Mk1 (2x2, wood, clay bricks and glass), clay drill heads
    (shape clay, then fire it in a furnace), glass (smelted from sand) and
-   bricks (fired from clay). Like an offshore pump the bore can only be
-   placed at the edge of open ground, facing the rock wall it will dig into.
+   bricks (fired from clay). The bore can be placed anywhere on open
+   ground, facing the rock it will dig into.
 4. Open the bore. It works like a burner furnace: no recipe to choose, just
    put in any drill head you have unlocked and it digs with it, the way a
    turret takes any ammo. It has a fuel slot with its own burn bar and a
