@@ -1,5 +1,5 @@
-"""Render item icons: drill heads (wooden, unfired and fired clay), blade,
-sand, clay and glass (64x64).
+"""Render item icons: drill heads (wooden, unfired and fired clay, hardened,
+carbide), sand, clay, glass, gravel and dust (64x64).
 
 Usage: python3 item_gfx.py <output-dir>
 """
@@ -78,28 +78,6 @@ def clay():
     return img
 
 
-def blade():
-    """Salvaged circular cutting blade."""
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    c = S / 2
-    teeth = 16
-    pts = []
-    for i in range(teeth):
-        a = 2 * math.pi * i / teeth
-        pts.append((c + S * 0.46 * math.cos(a), c + S * 0.46 * math.sin(a)))
-        b = a + 2 * math.pi / teeth * 0.7
-        pts.append((c + S * 0.36 * math.cos(b), c + S * 0.36 * math.sin(b)))
-    d.polygon(pts, fill=(176, 182, 190, 255), outline=(70, 74, 80, 255), width=SS * 2)
-    d.ellipse([c - S * 0.3, c - S * 0.3, c + S * 0.3, c + S * 0.3], fill=(150, 156, 164, 255))
-    # scorch and scratches from the crash
-    d.pieslice([c - S * 0.3, c - S * 0.3, c + S * 0.3, c + S * 0.3], 200, 260, fill=(110, 100, 92, 255))
-    for k in range(3):
-        d.line([(c - S * 0.2, c + S * (0.05 + k * 0.06)), (c + S * 0.12, c + S * (0.12 + k * 0.05))], fill=(196, 202, 210, 255), width=SS)
-    d.ellipse([c - S * 0.08, c - S * 0.08, c + S * 0.08, c + S * 0.08], fill=(60, 62, 66, 255), outline=(30, 30, 32, 255), width=SS * 2)
-    return img
-
-
 def clay_drill_head(fired):
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
@@ -111,13 +89,27 @@ def clay_drill_head(fired):
     gear(d, c, c, S * 0.46, S * 0.35, 9, body, edge)
     d.ellipse([c - S * 0.27, c - S * 0.27, c + S * 0.27, c + S * 0.27], fill=ring, outline=edge, width=SS * 2)
     if fired:
-        # glaze highlight and the blade set into the clay
+        # glaze highlight
         d.arc([c - S * 0.22, c - S * 0.22, c + S * 0.22, c + S * 0.22], 200, 300, fill=(236, 170, 130, 255), width=SS * 3)
     else:
         # finger marks in the soft clay
         for k in range(3):
             d.arc([c - S * (0.12 + k * 0.05), c - S * 0.2, c + S * (0.12 + k * 0.05), c + S * 0.2], 20, 160, fill=(150, 116, 90, 255), width=SS)
     d.ellipse([c - S * 0.09, c - S * 0.09, c + S * 0.09, c + S * 0.09], fill=(176, 182, 190, 255), outline=(60, 62, 66, 255), width=SS * 2)
+    return img
+
+
+def metal_drill_head(body, edge, ring, glint):
+    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    c = S / 2
+    gear(d, c, c, S * 0.47, S * 0.36, 12, body, edge)
+    d.ellipse([c - S * 0.27, c - S * 0.27, c + S * 0.27, c + S * 0.27], fill=ring, outline=edge, width=SS * 2)
+    for k in range(6):
+        a = k * math.pi / 3
+        x, y = c + S * 0.18 * math.cos(a), c + S * 0.18 * math.sin(a)
+        d.polygon([(x, y - S * 0.05), (x + S * 0.04, y), (x, y + S * 0.05), (x - S * 0.04, y)], fill=glint)
+    d.ellipse([c - S * 0.08, c - S * 0.08, c + S * 0.08, c + S * 0.08], fill=(40, 40, 44, 255), outline=(20, 20, 22, 255), width=SS * 2)
     return img
 
 
@@ -135,6 +127,9 @@ save(wooden_drill_head(), "wooden-drill-head")
 save(clay_drill_head(False), "unfired-clay-drill-head")
 save(clay_drill_head(True), "clay-drill-head")
 save(glass(), "glass")
-save(blade(), "blade")
+save(pile((120, 114, 106, 255), (150, 144, 136), 9, 60, (0.04, 0.07)), "gravel")
+save(pile((200, 192, 176, 255), (226, 220, 206), 13, 320, (0.008, 0.015)), "dust")
+save(metal_drill_head((96, 100, 108, 255), (36, 38, 42, 255), (230, 140, 40, 255), (255, 210, 120, 255)), "hardened-drill-head")
+save(metal_drill_head((40, 40, 46, 255), (14, 14, 16, 255), (70, 72, 82, 255), (190, 230, 255, 255)), "carbide-drill-head")
 save(pile((206, 178, 120, 255), (226, 198, 140), 5, 220, (0.012, 0.025)), "sand")
 save(clay(), "clay")

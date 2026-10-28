@@ -1,17 +1,19 @@
--- Core drill and shafts. A core drill crafts the shaft segments of the layer
--- below it, like a rocket silo crafts rocket parts. When the last segment is
--- done the shaft breaks through: the drill's site becomes a pit with stairs
--- going down along two of its rims (shaft top), the layer below gets a small
--- landing platform where the same stairs arrive (shaft bottom), and the drill
--- itself moves down onto the landing. Anything left in it moves along; it then
--- waits until that is taken out and it is fed the next layer's inputs.
+-- Core drill and shafts. A core drill wears out drill heads like a tunnel bore
+-- (runtime/wear.lua), digging the shaft to the floor below one hit at a time;
+-- each hit brings up the shaft's drops. When the shaft is deep enough it breaks
+-- through: the drill's site becomes a pit with stairs going down along two of
+-- its rims (shaft top), the floor below gets a small landing platform where the
+-- same stairs arrive (shaft bottom), and the drill moves down onto the landing
+-- with everything in it, ready to dig the next, harder shaft.
 --
 -- Players travel by walking along the stairs: down to their low end on a shaft
 -- top to descend, up to their high end on a shaft bottom to ascend.
 local shaft_config = require("shared.shaft")
 local layers = require("runtime.layers")
+local progression = require("runtime.progression")
 local research = require("runtime.research")
 local tunnel = require("runtime.tunnel")
+local wear = require("runtime.wear")
 
 local drill_name = shaft_config.drill_name
 local half = shaft_config.size / 2
@@ -35,7 +37,11 @@ local function drills()
   return storage.ttc.core_drills
 end
 
--- Shaft links by "<surface index>:<x>:<y>" of either end.
+-- Shaft links by "<surface index>:<x>:<y>": `down` is where a shaft top
+-- there leads, `up` where a shaft bottom there leads. A floor's landing and
+-- its next shaft share a spot, so one spot can have both.
+local links_version = 2
+
 local function links()
   storage.ttc.shafts = storage.ttc.shafts or {}
   return storage.ttc.shafts
@@ -43,6 +49,37 @@ end
 
 local function link_key(surface, position)
   return surface.index .. ":" .. position.x .. ":" .. position.y
+end
+
+local function link(surface, position)
+  local key = link_key(surface, position)
+  links()[key] = links()[key] or {}
+  return links()[key]
+end
+
+local function connect(upper, lower, position)
+  link(upper, position).down = lower.index
+  link(lower, position).up = upper.index
+end
+
+-- Rebuilds every link from the shaft tops on the map: each shaft has one,
+-- on the floor it was dug from.
+local function rebuild_links()
+  storage.ttc.shafts = {}
+  local top_names = {}
+  for _, axis in ipairs(shaft_config.axes) do
+    top_names[#top_names + 1] = shaft_config.top_name(axis)
+  end
+  for _, surface in pairs(game.surfaces) do
+    local below = layers.below(surface)
+    local lower = below and game.surfaces[below.surface_name]
+    if lower then
+      for _, top in pairs(surface.find_entities_filtered({name = top_names})) do
+        connect(surface, lower, top.position)
+      end
+    end
+  end
+  storage.ttc.shaft_links_version = links_version
 end
 
 local function set_status(entity, status_key, diode, ...)
@@ -53,84 +90,161 @@ local function set_status(entity, status_key, diode, ...)
   } or nil
 end
 
--- emptying: the drill still holds the previous shaft's leftovers and keeps
--- that recipe until they are taken out.
-function shaft.register(entity, emptying)
-  drills()[entity.unit_number] = {
-    entity = entity,
-    products_finished = entity.products_finished,
-    segments = 0,
-    emptying = emptying
-  }
-  local below = layers.below(entity.surface)
-  if below and not emptying then
-    entity.set_recipe(shaft_config.recipe_name(below))
-  end
+function shaft.register(entity)
+  local state = wear.new_state(entity)
+  state.entity = entity
+  state.hits = 0
+  drills()[entity.unit_number] = state
+  return state
 end
 
 function shaft.unregister(entity)
   drills()[entity.unit_number] = nil
 end
 
+local shaft_entity_names = {}
+for _, axis in ipairs(shaft_config.axes) do
+  shaft_entity_names[shaft_config.top_name(axis)] = true
+  shaft_entity_names[shaft_config.bottom_name(axis)] = true
+  shaft_entity_names[shaft_config.stair_blocker_name(axis)] = true
+end
+
+-- Clears the square of `size` tiles around `position` for a shaft: whatever
+-- was built there is mined (with the usual events, so bores and chutes clean
+-- up) and dropped on the ground beside it with its contents; trees and rocks
+-- are cleared away and players moved aside. Tunnel walls and shafts stay.
+local function clear_site(surface, position, size)
+  local half_size = size / 2
+  local beside = {x = position.x, y = position.y + half_size + 1}
+  local dropped = game.create_inventory(64)
+  for _, entity in pairs(surface.find_entities_filtered({
+    area = {{position.x - half_size, position.y - half_size}, {position.x + half_size, position.y + half_size}}
+  })) do
+    if entity.valid and not shaft_entity_names[entity.name]
+      and not tunnel.is_wall(entity) and entity.type ~= "resource" then
+      if entity.type == "character" then
+        local target = surface.find_non_colliding_position("character", beside, 10, 0.5)
+        if target then
+          entity.teleport(target)
+        end
+      elseif entity.type == "item-entity" then
+        entity.teleport(surface.find_non_colliding_position("item-on-ground", beside, 10, 0.5) or beside)
+      elseif entity.force.name == "neutral"
+        or not entity.mine({inventory = dropped, force = true, ignore_minable = true}) then
+        -- Trees and rocks are simply cleared away.
+        entity.destroy({raise_destroy = true})
+      end
+    end
+  end
+  for _, item in ipairs(dropped.get_contents()) do
+    surface.spill_item_stack({
+      position = beside,
+      stack = {name = item.name, count = item.count, quality = item.quality},
+      allow_belts = false
+    })
+  end
+  dropped.destroy()
+end
+
+-- The strips that keep buildings off a shaft's stairs.
+local function block_stairs(surface, position, axis)
+  local name = shaft_config.stair_blocker_name(axis)
+  for _, stair in ipairs(shaft_config.stairs[axis]) do
+    local middle = {
+      x = position.x + (stair.high.x + stair.low.x) / 2,
+      y = position.y + (stair.high.y + stair.low.y) / 2
+    }
+    if not surface.find_entity(name, middle) then
+      surface.create_entity({name = name, position = middle})
+    end
+  end
+end
+
+-- Tile offsets from a shaft's centre tile: the drill's 5x5, plus for each
+-- stairway its 5-tile strip and `platform_margin` rows beyond it, as wide as
+-- the drill. The other two sides stay rock, so each side is reached by its
+-- own stairs.
+local function landing_tiles(axis)
+  local offsets = {}
+  for x = -2, 2 do
+    for y = -2, 2 do
+      offsets[#offsets + 1] = {x = x, y = y}
+    end
+  end
+  local outer = 3 + shaft_config.platform_margin
+  for across = -2, 2 do
+    for along = 3, outer do
+      for _, side in ipairs({-1, 1}) do
+        if axis == "ns" then
+          offsets[#offsets + 1] = {x = across, y = side * along}
+        else
+          offsets[#offsets + 1] = {x = side * along, y = across}
+        end
+      end
+    end
+  end
+  return offsets
+end
+
+local function open_tiles(surface, position, offsets, tile)
+  local positions = {}
+  for _, offset in ipairs(offsets) do
+    positions[#positions + 1] = {x = position.x + offset.x, y = position.y + offset.y}
+  end
+  tunnel.open(surface, positions, tile)
+end
+
+-- Saves from before stairs kept buildings off get their blockers once.
+local function ensure_stair_blockers()
+  if storage.ttc.stair_blockers then
+    return
+  end
+  storage.ttc.stair_blockers = true
+  local kinds = {}
+  for _, axis in ipairs(shaft_config.axes) do
+    kinds[shaft_config.top_name(axis)] = axis
+    kinds[shaft_config.bottom_name(axis)] = axis
+  end
+  local names = {}
+  for name in pairs(kinds) do
+    names[#names + 1] = name
+  end
+  for _, surface in pairs(game.surfaces) do
+    for _, entity in pairs(surface.find_entities_filtered({name = names})) do
+      block_stairs(surface, entity.position, kinds[entity.name])
+    end
+  end
+end
+
 local function open_landing(surface, position, layer, axis)
-  -- From the centre tile to the outermost tile centre of shaft plus margin.
-  local reach = half - 0.5 + shaft_config.platform_margin
-  tunnel.open_area(
-    surface,
-    {x = position.x - reach, y = position.y - reach},
-    {x = position.x + reach, y = position.y + reach},
-    layer.tunnel_tile
-  )
+  open_tiles(surface, position, landing_tiles(axis), layer.tunnel_tile)
   local name = shaft_config.bottom_name(axis)
   if not surface.find_entity(name, position) then
     surface.create_entity({name = name, position = position})
   end
+  block_stairs(surface, position, axis)
 end
 
-local function is_empty(entity)
-  return entity.get_inventory(defines.inventory.crafter_input).is_empty()
-    and entity.get_output_inventory().is_empty()
-end
-
--- Puts the previous shaft's inputs and outputs back into the moved drill,
--- which keeps that shaft's recipe to hold them. Returns false if there was
--- nothing to keep.
-local function keep_leftovers(drill, recipe_name, inputs, outputs)
-  if #inputs == 0 and #outputs == 0 then
-    return false
-  end
-  drill.set_recipe(recipe_name)
-  local input = drill.get_inventory(defines.inventory.crafter_input)
-  local output = drill.get_output_inventory()
-  local items = {}
-  for _, item in ipairs(inputs) do
-    items[#items + 1] = {item = item, inventories = {input, output}}
-  end
-  for _, item in ipairs(outputs) do
-    items[#items + 1] = {item = item, inventories = {output, input}}
-  end
-  for _, entry in ipairs(items) do
-    local item = entry.item
-    local left = item.count
-    for _, inventory in ipairs(entry.inventories) do
-      if left > 0 then
-        left = left - inventory.insert({name = item.name, count = left, quality = item.quality})
+-- On a floor, the next shaft's stairs are cut into the rock beside its pit,
+-- one tile longer at each end so they join the ground around them.
+local function open_pit_stairs(surface, position, axis)
+  local layer = layers.of_surface(surface)
+  if layer then
+    local offsets = {}
+    for _, stair in ipairs(shaft_config.stairs[axis]) do
+      local steps = math.abs(stair.low.x - stair.high.x) + math.abs(stair.low.y - stair.high.y)
+      for step = -1, steps + 1 do
+        local t = step / steps
+        offsets[#offsets + 1] = {
+          x = stair.high.x + (stair.low.x - stair.high.x) * t,
+          y = stair.high.y + (stair.low.y - stair.high.y) * t
+        }
       end
     end
-    if left > 0 then
-      drill.surface.spill_item_stack({
-        position = drill.position,
-        stack = {name = item.name, count = left, quality = item.quality},
-        force = drill.force,
-        allow_belts = false
-      })
-    end
+    open_tiles(surface, position, offsets, layer.tunnel_tile)
   end
-  return true
 end
 
--- Breaks the shaft through and moves the drill down. Returns false if the
--- landing spot below is blocked.
 local function break_through(state, below, below_index)
   local drill = state.entity
   local surface, force = drill.surface, drill.force
@@ -139,20 +253,21 @@ local function break_through(state, below, below_index)
   local axis = shaft_config.axis(below_index)
 
   open_landing(lower, position, below, axis)
+  clear_site(lower, position, shaft_config.size)
   if not lower.can_place_entity({name = drill_name, position = position, force = force}) then
     return false
   end
 
-  local recipe_name = drill.get_recipe().name
-  local input = drill.get_inventory(defines.inventory.crafter_input)
-  local output = drill.get_output_inventory()
-  local inputs, outputs = input.get_contents(), output.get_contents()
-  input.clear()
-  output.clear()
-  -- With the inventories emptied, clearing the recipe hands back only the
-  -- ingredients of a craft in progress.
-  for _, item in ipairs(drill.set_recipe(nil)) do
-    inputs[#inputs + 1] = item
+  -- Everything moves down: the heads (the one being worn comes back whole),
+  -- the shaft's drops and the fuel.
+  local heads = drill.get_inventory(defines.inventory.crafter_input).get_contents()
+  local current = drill.get_recipe()
+  if current and drill.is_crafting() then
+    heads[#heads + 1] = {name = current.ingredients[1].name, count = 1}
+  end
+  local pending = state.pending
+  for _, item in ipairs(drill.get_output_inventory().get_contents()) do
+    pending[item.name] = (pending[item.name] or 0) + item.count
   end
   local fuel = drill.get_fuel_inventory().get_contents()
   local burner = drill.burner
@@ -162,7 +277,10 @@ local function break_through(state, below, below_index)
 
   shaft.unregister(drill)
   drill.destroy()
+  clear_site(surface, position, shaft_config.size)
+  open_pit_stairs(surface, position, axis)
   surface.create_entity({name = shaft_config.top_name(axis), position = position})
+  block_stairs(surface, position, axis)
 
   local moved = lower.create_entity({name = drill_name, position = position, force = force})
   moved.health = health
@@ -173,52 +291,42 @@ local function break_through(state, below, below_index)
     moved.burner.currently_burning = burning
     moved.burner.remaining_burning_fuel = remaining
   end
-  shaft.register(moved, keep_leftovers(moved, recipe_name, inputs, outputs))
+  for _, item in ipairs(heads) do
+    moved.get_inventory(defines.inventory.crafter_input).insert(item)
+  end
+  -- The output only takes drops once the drill digs again.
+  shaft.register(moved).pending = pending
 
-  links()[link_key(surface, position)] = lower.index
-  links()[link_key(lower, position)] = surface.index
+  connect(surface, lower, position)
   for _, technology in ipairs(below.reached_unlocks or {}) do
     research.unlock(force, technology)
   end
+  progression.reach_floor(force, below_index)
   force.print({"ttc.shaft-reached", {"ttc-layer-name." .. below.name}})
+  -- A hint at the ground the next shaft has to go through.
+  force.print({"ttc-ground-below." .. below.name})
   return true
 end
 
 local function update(state)
   local drill = state.entity
-  if state.emptying then
-    if not is_empty(drill) then
-      set_status(drill, "shaft-leftovers", defines.entity_status_diode.red)
-      return
-    end
-    state.emptying = nil
-  end
-
   local below, below_index = layers.below(drill.surface)
   if not below then
     set_status(drill, "deepest-layer", defines.entity_status_diode.red)
     return
   end
 
-  local recipe_name = shaft_config.recipe_name(below)
-  local recipe = drill.get_recipe()
-  if not recipe or recipe.name ~= recipe_name then
-    for _, item in ipairs(drill.set_recipe(recipe_name)) do
-      drill.surface.spill_item_stack({
-        position = drill.position,
-        stack = item,
-        force = drill.force,
-        allow_belts = false
-      })
-    end
-    state.products_finished = drill.products_finished
+  local dealt, whole = wear.update(state, drill, shaft_config.recipe_heads)
+  state.hits = state.hits + dealt
+  if whole > 0 then
+    wear.roll(state, below.shaft.drops, whole)
+  end
+  if not wear.deliver(state, drill) and drill.get_recipe() then
+    set_status(drill, "output-full", defines.entity_status_diode.red)
+    return
   end
 
-  local finished = drill.products_finished
-  state.segments = state.segments + finished - state.products_finished
-  state.products_finished = finished
-
-  if state.segments >= below.shaft.segments then
+  if state.hits + 0.001 >= below.shaft.hits then
     if not break_through(state, below, below_index) then
       set_status(drill, "landing-blocked", defines.entity_status_diode.red)
     end
@@ -227,13 +335,77 @@ local function update(state)
 
   if drill.status == defines.entity_status.working then
     set_status(drill, "shaft-progress", defines.entity_status_diode.green,
-      state.segments, below.shaft.segments, {"ttc-layer-name." .. below.name})
+      math.floor(state.hits), below.shaft.hits, {"ttc-layer-name." .. below.name})
   else
     set_status(drill, nil)
   end
 end
 
+-- Depth bar ------------------------------------------------------------------
+
+-- A panel beside the core drill's window: the crafting bar there is the drill
+-- head's wear, so the shaft's depth gets its own bar.
+local depth_frame = "ttc-core-drill-depth"
+
+local function depth_panel(player)
+  local frame = player.gui.relative[depth_frame]
+  if not frame then
+    frame = player.gui.relative.add({
+      type = "frame",
+      name = depth_frame,
+      caption = {"ttc.shaft-depth-title"},
+      direction = "vertical",
+      anchor = {
+        gui = defines.relative_gui_type.furnace_gui,
+        position = defines.relative_gui_position.right,
+        name = drill_name
+      }
+    })
+    frame.add({type = "label", name = "depth"})
+    frame.add({type = "progressbar", name = "bar"}).style.width = 220
+  end
+  return frame
+end
+
+local function show_depth(player, drill)
+  local frame = depth_panel(player)
+  local state = drills()[drill.unit_number]
+  local below = layers.below(drill.surface)
+  if not (state and below) then
+    frame.depth.caption = {"ttc-status.deepest-layer"}
+    frame.bar.value = 0
+    return
+  end
+  frame.depth.caption = {"ttc.shaft-depth", math.floor(state.hits), below.shaft.hits, {"ttc-layer-name." .. below.name}}
+  frame.bar.value = math.min(1, state.hits / below.shaft.hits)
+end
+
+function shaft.on_gui_opened(event)
+  local entity = event.entity
+  if entity and entity.valid and entity.name == drill_name then
+    show_depth(game.get_player(event.player_index), entity)
+  end
+end
+
+local function refresh_depth_panels()
+  for _, player in pairs(game.connected_players) do
+    local opened = player.opened
+    if player.opened_gui_type == defines.gui_type.entity and opened and opened.valid and opened.name == drill_name then
+      show_depth(player, opened)
+    end
+  end
+end
+
+-- Saves from before links were kept per direction get theirs rebuilt.
+local function ensure_links()
+  if storage.ttc.shaft_links_version ~= links_version then
+    rebuild_links()
+  end
+end
+
 function shaft.tick()
+  ensure_links()
+  ensure_stair_blockers()
   for unit_number, state in pairs(drills()) do
     if state.entity.valid then
       update(state)
@@ -241,6 +413,7 @@ function shaft.tick()
       drills()[unit_number] = nil
     end
   end
+  refresh_depth_panels()
 end
 
 function shaft.rescan()
@@ -271,10 +444,9 @@ local function walk_vector(direction)
 end
 
 -- Where walking in `direction` at `position` on `surface` takes a player:
--- returns the target surface and position, or nil. Stepping onto the low end
--- of a top's stairs leads just past the foot of the same stairs below;
--- stepping onto the high end of a bottom's stairs leads just past their head
--- above.
+-- returns the target surface and position, or nil. Walking down a top's
+-- stairs past their middle, or up a bottom's, leads to the middle of the same
+-- stairs on the other floor, where the player carries on the same way.
 function shaft.travel_target(surface, position, direction)
   local walk = walk_vector(direction)
   for _, entity in pairs(surface.find_entities_filtered({
@@ -283,7 +455,9 @@ function shaft.travel_target(surface, position, direction)
     radius = half + 1
   })) do
     local kind = shaft_kinds[entity.name]
-    local other = game.surfaces[links()[link_key(surface, entity.position)] or -1]
+    local entry = links()[link_key(surface, entity.position)] or {}
+    local index = kind.top and entry.down or entry.up
+    local other = index and game.surfaces[index]
     if other then
       local center = entity.position
       for _, stair in ipairs(shaft_config.stairs[kind.axis]) do
@@ -297,16 +471,15 @@ function shaft.travel_target(surface, position, direction)
         local across = dx * n.x + dy * n.y
         local heading = walk.x * u.x + walk.y * u.y
         if math.abs(across) <= 0.5 then
-          if kind.top and heading > 0.5 and along >= length - 0.5 and along <= length + 0.7 then
-            return other, {
-              x = center.x + stair.low.x + u.x + n.x * across,
-              y = center.y + stair.low.y + u.y + n.y * across
-            }
-          elseif not kind.top and heading < -0.5 and along <= 0.5 and along >= -0.7 then
-            return other, {
-              x = center.x + stair.high.x - u.x + n.x * across,
-              y = center.y + stair.high.y - u.y + n.y * across
-            }
+          local half_way = length / 2
+          local middle = {
+            x = center.x + (stair.high.x + stair.low.x) / 2 + n.x * across,
+            y = center.y + (stair.high.y + stair.low.y) / 2 + n.y * across
+          }
+          if kind.top and heading > 0.5 and along >= half_way and along <= length + 0.7 then
+            return other, middle
+          elseif not kind.top and heading < -0.5 and along <= half_way and along >= -0.7 then
+            return other, middle
           end
         end
       end
@@ -332,6 +505,7 @@ local function check_player(player)
 end
 
 function shaft.check_travel()
+  ensure_links()
   for _, player in pairs(game.connected_players) do
     check_player(player)
   end

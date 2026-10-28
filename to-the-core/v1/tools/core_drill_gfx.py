@@ -1,9 +1,9 @@
 """Render the core drill (5x5) and the shaft it leaves behind (7x7).
 
 Outputs into the given directory (64 px per tile, drawn at scale 0.5):
-  core-drill.png          8-frame row of 384x384 frames (6x6 tiles centred on
-                          the 5x5 drill, room for the derrick and shadow)
-  core-drill-shadow.png   384x384
+  core-drill.png          8-frame row of 384x512 frames (6x8 tiles; the 5x5
+                          footprint centre is 1 tile below the frame centre)
+  core-drill-shadow.png   576x512, slanted east from the same ground line
   core-drill-icon.png     64x64
   shaft-top-<axis>.png    448x448: 5x5 pit with stairs going down along two
                           opposite rims; transparent elsewhere
@@ -50,66 +50,134 @@ def shadow_of(img, offset=(10, 6), blur=2.0):
 
 # --- core drill -------------------------------------------------------------
 
-DRILL_CANVAS = 6  # tiles
+# Frames are 6 tiles wide and 8 tall: the 5x5 footprint sits low in the frame
+# (centre 1 tile below the frame's centre) so the rig can rise above it.
+DRILL_W, DRILL_H = 6, 8
+GROUND_CX, GROUND_CY = 3, 5      # footprint centre in frame tiles
+HEIGHT = 0.85                    # screen tiles per tile of height (3/4 view)
 
 
-def dpt(x, y):
-    """Drill-local tiles (centre 0,0) to supersampled pixels."""
-    c = DRILL_CANVAS / 2
-    return (int((x + c) * TILE * SS), int((y + c) * TILE * SS))
+def P(x, y, z=0):
+    """Ground position (tiles from the drill centre) and height to pixels."""
+    return (int((x + GROUND_CX) * TILE * SS), int((y + GROUND_CY - z * HEIGHT) * TILE * SS))
+
+
+def beam(d, a, b, width, fill, edge):
+    d.line([P(*a), P(*b)], fill=edge, width=int(width * TILE * SS) + SS * 4)
+    d.line([P(*a), P(*b)], fill=fill, width=int(width * TILE * SS))
+
+
+def leg(d, corner):
+    sx, sy = corner
+    foot, top = (sx * 2.25, sy * 2.25, 0), (sx * 1.45, sy * 1.45, 3.1)
+    beam(d, foot, top, 0.2, (84, 82, 80), (34, 32, 30))
+    d.ellipse([P(sx * 2.25 - 0.3, sy * 2.25 - 0.18), P(sx * 2.25 + 0.3, sy * 2.25 + 0.18)], fill=(70, 56, 44))
+
+
+def top_beam(d, a, b):
+    beam(d, (a[0], a[1], 3.1), (b[0], b[1], 3.1), 0.16, (96, 94, 92), (34, 32, 30))
+
+
+def auger(d, frame):
+    """The huge drill head: a spiral cone boring into the ground."""
+    top_z, bottom_z = 2.7, -0.3
+    steps = 80
+
+    def radius(t):
+        return 1.95 * (1 - t) ** 0.8 + 0.12
+
+    # core of the cone, back to front so the light falls from the left
+    for i in range(steps):
+        t = i / steps
+        z = top_z - (top_z - bottom_z) * t
+        r = radius(t) * 0.85
+        shade = int(120 - 50 * t)
+        d.ellipse([P(-r, -r * 0.3, z), P(r, r * 0.3, z)], fill=(shade, int(shade * 0.82), int(shade * 0.6)))
+    # spiral flights turning with the frame: continuous lines on the front
+    turns = 3.5
+    for k in range(2):
+        points = []
+        for i in range(steps * 4 + 1):
+            t = i / (steps * 4)
+            z = top_z - (top_z - bottom_z) * t
+            angle = 2 * math.pi * (t * turns + k / 2 + frame / (FRAMES * 2))
+            front = math.sin(angle)
+            r = radius(t)
+            if front > -0.15:
+                points.append((P(r * math.cos(angle), r * 0.3 * front, z), front))
+            elif points:
+                draw_flight(d, points)
+                points = []
+        if points:
+            draw_flight(d, points)
+    # cutting tip
+    d.polygon([P(-0.25, 0, 0.0), P(0.25, 0, 0.0), P(0, 0.15, -0.45)], fill=(205, 205, 210), outline=(80, 80, 84))
+
+
+def draw_flight(d, points):
+    for (a, fa), (b, fb) in zip(points, points[1:]):
+        light = 0.5 + 0.5 * max(fa, 0)
+        g = int(215 * light)
+        d.line([a, b], fill=(int(g * 0.5), int(g * 0.42), int(g * 0.3)), width=SS * 16)
+        d.line([a, b], fill=(g, int(g * 0.86), int(g * 0.62)), width=SS * 10)
+
+
+def gearbox(d, frame):
+    # housing on the back beam, driving the auger through a shaft
+    d.rectangle([P(-0.12, 0, 3.6), P(0.12, 0, 2.6)], fill=(150, 150, 156), outline=(60, 60, 64))
+    d.rounded_rectangle([P(-0.95, -1.45, 4.15), P(0.95, -1.45, 3.1)], radius=SS * 6, fill=(108, 110, 116), outline=(40, 40, 44), width=SS * 2)
+    beam(d, (0, -1.45, 3.75), (0, 0, 3.75), 0.2, (96, 98, 104), (40, 40, 44))
+    for cx, cz, r, teeth, sign in ((-0.55, 3.62, 0.42, 10, 1), (0.2, 3.5, 0.3, 8, -1), (0.68, 3.78, 0.24, 7, 1)):
+        center = P(cx, -1.3, cz)
+        rr = r * TILE * SS
+        pts = []
+        for i in range(teeth * 2):
+            ang = math.pi * i / teeth + sign * frame * 2 * math.pi / (FRAMES * teeth)
+            rad = rr if i % 2 == 0 else rr * 0.8
+            pts.append((center[0] + rad * math.cos(ang), center[1] + rad * math.sin(ang) * 0.9))
+        d.polygon(pts, fill=(176, 136, 62), outline=(80, 60, 26))
+        d.ellipse([center[0] - rr * 0.3, center[1] - rr * 0.3, center[0] + rr * 0.3, center[1] + rr * 0.3], fill=(90, 70, 30))
+
+
+def firebox(d):
+    # rusty hopper and firebox on the left, like the burner mining drill's
+    d.polygon([P(-2.4, -0.7, 2.2), P(-1.3, -0.7, 2.2), P(-1.4, 0.5, 1.3), P(-2.3, 0.5, 1.3)], fill=(150, 84, 46), outline=(70, 38, 20))
+    d.polygon([P(-2.3, 0.5, 1.3), P(-1.4, 0.5, 1.3), P(-1.4, 0.5, 0.4), P(-2.3, 0.5, 0.4)], fill=(122, 66, 36), outline=(70, 38, 20))
+    d.rectangle([P(-2.1, 0.5, 1.05), P(-1.6, 0.5, 0.7)], fill=(40, 20, 12))
+    d.rectangle([P(-2.03, 0.5, 0.98), P(-1.67, 0.5, 0.76)], fill=(240, 130, 40))
+    d.rectangle([P(-2.15, -0.6, 3.4), P(-1.9, -0.6, 2.2)], fill=(70, 66, 62), outline=(30, 28, 26))
 
 
 def drill_frame(frame):
-    img, d = canvas(DRILL_CANVAS)
-    w = SS * 2
-    # base frame
-    d.rounded_rectangle([dpt(-2.4, -2.4), dpt(2.4, 2.4)], radius=TILE * SS // 6, fill=(78, 82, 88), outline=(28, 28, 30), width=w)
-    d.rounded_rectangle([dpt(-2.15, -2.15), dpt(2.15, 2.15)], radius=TILE * SS // 8, fill=(96, 100, 106))
-    # deck grating
-    for i in range(-8, 9):
-        x = i * 0.25
-        d.line([dpt(x, -2.1), dpt(x, 2.1)], fill=(84, 88, 94), width=SS)
-    # hazard corner pads
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            x0, y0 = sx * 2.2, sy * 2.2
-            d.rectangle([dpt(min(x0, x0 - sx * 0.7), min(y0, y0 - sy * 0.7)), dpt(max(x0, x0 - sx * 0.7), max(y0, y0 - sy * 0.7))], fill=(230, 180, 40), outline=(30, 30, 30), width=w)
-            for k in range(3):
-                o = 0.2 + k * 0.22
-                d.line([dpt(x0 - sx * o, y0), dpt(x0, y0 - sy * o)], fill=(30, 30, 30), width=w * 2)
-    # burner engine on the south edge with exhaust stack
-    d.rounded_rectangle([dpt(-1.3, 1.45), dpt(1.3, 2.1)], radius=SS * 6, fill=(70, 74, 80), outline=(36, 36, 40), width=w)
-    for k in range(5):
-        x = -1.1 + k * 0.5
-        d.line([dpt(x, 1.55), dpt(x, 2.0)], fill=(52, 54, 58), width=w)
-    d.ellipse([dpt(1.55, 1.5), dpt(1.95, 1.9)], fill=(36, 36, 36), outline=(18, 18, 18), width=w)
-    # rotary table
-    d.ellipse([dpt(-1.35, -1.35), dpt(1.35, 1.35)], fill=(46, 46, 50), outline=(24, 24, 26), width=w)
-    d.ellipse([dpt(-1.15, -1.15), dpt(1.15, 1.15)], fill=(150, 120, 60), outline=(60, 48, 26), width=w)
-    spin = 2 * math.pi * frame / (FRAMES * 6)
-    for i in range(6):
-        a = spin + 2 * math.pi * i / 6
-        d.line([dpt(0.25 * math.cos(a), 0.25 * math.sin(a)), dpt(1.05 * math.cos(a), 1.05 * math.sin(a))], fill=(82, 64, 30), width=w * 3)
-        bx, by = 0.95 * math.cos(a + 0.5), 0.95 * math.sin(a + 0.5)
-        d.ellipse([dpt(bx - 0.06, by - 0.06), dpt(bx + 0.06, by + 0.06)], fill=(200, 200, 205))
-    # kelly (square drive) turning with the table
-    corners = [(0.32 * math.cos(spin + math.pi / 4 + k * math.pi / 2), 0.32 * math.sin(spin + math.pi / 4 + k * math.pi / 2)) for k in range(4)]
-    d.polygon([dpt(*c) for c in corners], fill=(200, 200, 205), outline=(40, 40, 40))
-    # derrick: legs from the deck corners up to a crown block above the table
-    crown = (0.0, -1.1)
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            d.line([dpt(sx * 1.85, sy * 1.85), dpt(crown[0] + sx * 0.3, crown[1] + sy * 0.3)], fill=(190, 140, 40), width=w * 3)
-    for t in (0.3, 0.6):
-        pts = []
-        for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
-            x = sx * 1.85 + (crown[0] + sx * 0.3 - sx * 1.85) * t
-            y = sy * 1.85 + (crown[1] + sy * 0.3 - sy * 1.85) * t
-            pts.append(dpt(x, y))
-        d.line(pts + [pts[0]], fill=(170, 124, 36), width=w * 2)
-    d.rectangle([dpt(crown[0] - 0.35, crown[1] - 0.35), dpt(crown[0] + 0.35, crown[1] + 0.35)], fill=(120, 90, 30), outline=(40, 30, 10), width=w)
-    d.ellipse([dpt(crown[0] - 0.15, crown[1] - 0.15), dpt(crown[0] + 0.15, crown[1] + 0.15)], fill=(60, 60, 60))
-    return finish(img, DRILL_CANVAS)
+    img = Image.new("RGBA", (DRILL_W * TILE * SS, DRILL_H * TILE * SS), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    # churned earth around the bore hole
+    d.ellipse([P(-2.4, -1.8), P(2.4, 2.2)], fill=(76, 62, 48, 255))
+    d.ellipse([P(-1.5, -0.9), P(1.5, 1.2)], fill=(44, 34, 26, 255))
+    for corner in ((-1, -1), (1, -1)):
+        leg(d, corner)
+    top_beam(d, (-1.45, -1.45), (1.45, -1.45))
+    gearbox(d, frame)
+    auger(d, frame)
+    firebox(d)
+    top_beam(d, (-1.45, -1.45), (-1.45, 1.45))
+    top_beam(d, (1.45, -1.45), (1.45, 1.45))
+    for corner in ((-1, 1), (1, 1)):
+        leg(d, corner)
+    top_beam(d, (-1.45, 1.45), (1.45, 1.45))
+    return img.resize((DRILL_W * TILE, DRILL_H * TILE), Image.LANCZOS)
+
+
+def drill_shadow(img):
+    """The rig's silhouette slanted to the east along the ground."""
+    w, h = img.size
+    ground = GROUND_CY * TILE + 2.5 * TILE
+    k = 0.45
+    alpha = img.split()[3].transform((w + 3 * TILE, h), Image.AFFINE, (1, k, -k * ground, 0, 1, 0), Image.BILINEAR)
+    alpha = alpha.filter(ImageFilter.GaussianBlur(2))
+    shadow = Image.new("LA", alpha.size, (0, 0))
+    shadow.putalpha(alpha.point(lambda a: a * 0.6))
+    return shadow
 
 
 # --- shaft ------------------------------------------------------------------
@@ -142,29 +210,6 @@ def rough_rect(d, x0, y0, x1, y1, fill, jitter, rng, step=0.25):
         pts.append(spt(x0 + rng.uniform(-jitter, jitter), y))
         y -= step
     d.polygon(pts, fill=fill)
-
-
-def strip(d, x0, y0, x1, y1, axis, high_end, low_shade, high_shade, steps=6):
-    """Stair strip filling the box, running along `axis` ("x" or "y").
-
-    high_end is "start" or "end" of the axis; shades go from high to low end.
-    """
-    length = (x1 - x0) if axis == "x" else (y1 - y0)
-    for i in range(steps):
-        t = (i + 0.5) / steps
-        height = 1 - t if high_end == "start" else t
-        shade = int(low_shade + (high_shade - low_shade) * height)
-        color = (shade, int(shade * 0.9), int(shade * 0.78))
-        if axis == "x":
-            a, b = (x0 + length * i / steps, y0), (x0 + length * (i + 1) / steps, y1)
-            nose = a[0] if high_end == "start" else b[0]
-            d.rectangle([spt(*a), spt(*b)], fill=color)
-            d.line([spt(nose, y0), spt(nose, y1)], fill=(min(255, shade + 45),) * 3, width=SS * 2)
-        else:
-            a, b = (x0, y0 + length * i / steps), (x1, y0 + length * (i + 1) / steps)
-            nose = a[1] if high_end == "start" else b[1]
-            d.rectangle([spt(*a), spt(*b)], fill=color)
-            d.line([spt(x0, nose), spt(x1, nose)], fill=(min(255, shade + 45),) * 3, width=SS * 2)
 
 
 def edge(d, x0, y0, x1, y1, color):
@@ -223,14 +268,63 @@ def jagged_line(x0, x1, y, rng, step=0.25):
     return pts
 
 
-def top_stairs(d, axis, low_shade, high_shade):
-    """The two stairways of a shaft, high to low as in shared/shaft.lua."""
-    if axis == "ns":
-        strip(d, 1, 0.1, 6, 1, "x", "start", low_shade, high_shade)   # north: down eastward
-        strip(d, 1, 6, 6, 6.9, "x", "end", low_shade, high_shade)     # south: down westward
-    else:
-        strip(d, 6, 1, 6.9, 6, "y", "start", low_shade, high_shade)   # east: down southward
-        strip(d, 0.1, 1, 1, 6, "y", "end", low_shade, high_shade)     # west: down northward
+# Each stairway's box (canvas tiles) and which end of it is high; as in
+# shared/shaft.lua: "ns" north (down eastward) and south (down westward), "we"
+# east (down southward) and west (down northward).
+STAIRWAYS = {
+    "ns": [((1, 0.1, 6, 1), "x", "start"), ((1, 6, 6, 6.9), "x", "end")],
+    "we": [((6, 1, 6.9, 6), "y", "start"), ((0.1, 1, 1, 6), "y", "end")],
+}
+STEPS = 6
+DROP = 0.5   # screen tiles the low end of a pit's stairs sinks
+RISE = 0.5   # screen tiles the high end of a landing's stairs stands up
+
+
+def step_level(i, high_end):
+    """How far down step i is, 0 at the high end to 1 at the low end."""
+    t = (i + 0.5) / STEPS
+    return t if high_end == "start" else 1 - t
+
+
+def stairs(d, axis, descending):
+    """Stairways in the 3/4 view. Into a pit (descending) each step sinks
+    lower, with the cut rock wall showing above it; on a landing each step
+    stands higher toward the high end on a face of rock below it."""
+    for (x0, y0, x1, y1), along, high_end in STAIRWAYS[axis]:
+        length = (x1 - x0) if along == "x" else (y1 - y0)
+        for i in range(STEPS):
+            level = step_level(i, high_end)
+            if along == "x":
+                xa, xb = x0 + length * i / STEPS, x0 + length * (i + 1) / STEPS
+                ya, yb = y0, y1
+            else:
+                xa, xb = x0, x1
+                ya, yb = y0 + length * i / STEPS, y0 + length * (i + 1) / STEPS
+            if descending:
+                dy = level * DROP
+                shade = int(150 - 105 * level)
+                # the cut: rock wall above the sunken step
+                d.rectangle([spt(xa, ya), spt(xb, ya + dy)], fill=(58, 50, 42))
+                tread = (xa, ya + dy, xb, yb + dy * 0.6)
+            else:
+                dy = (1 - level) * RISE
+                shade = int(205 - 95 * level)
+                # the face under the raised step
+                d.rectangle([spt(xa, yb - dy), spt(xb, yb)], fill=(int(shade * 0.45), int(shade * 0.4), int(shade * 0.34)))
+                tread = (xa, ya - dy * 0.4, xb, yb - dy)
+            color = (shade, int(shade * 0.9), int(shade * 0.78))
+            d.rectangle([spt(tread[0], tread[1]), spt(tread[2], tread[3])], fill=color)
+            # nosing: the light edge of each tread
+            if along == "x":
+                nose = tread[0] if high_end == "end" else tread[2]
+                d.line([spt(nose, tread[1]), spt(nose, tread[3])], fill=(min(255, shade + 45),) * 3, width=SS * 2)
+            else:
+                d.line([spt(tread[0], tread[3]), spt(tread[2], tread[3])], fill=(min(255, shade + 45),) * 3, width=SS * 2)
+
+
+def stair_offset(from_high, descending):
+    """Screen drop of a stairway's centre at fraction `from_high` along it."""
+    return from_high * DROP * 0.8 if descending else -(1 - from_high) * RISE * 0.7
 
 
 # Centre line of each stairway from its high end to its low end.
@@ -249,6 +343,7 @@ def stair_arrows(d, axis, down):
         n = (-u[1], u[0])
         for t in (0.35, 0.65):
             p = (start[0] + (end[0] - start[0]) * t, start[1] + (end[1] - start[1]) * t)
+            p = (p[0], p[1] + stair_offset(t if down else 1 - t, down))
             tip = (p[0] + u[0] * 0.17, p[1] + u[1] * 0.17)
             wings = [(p[0] - u[0] * 0.13 + n[0] * k * 0.24, p[1] - u[1] * 0.13 + n[1] * k * 0.24) for k in (-1, 1)]
             points = [spt(*wings[0]), spt(*tip), spt(*wings[1])]
@@ -278,7 +373,7 @@ def shaft_top(axis):
     rng = random.Random(7)
     img, d = canvas(SHAFT)
     pit(d, rng)
-    top_stairs(d, axis, 45, 150)
+    stairs(d, axis, descending=True)
     stair_walls(d, axis, (52, 46, 40), (20, 18, 16))
     stair_arrows(d, axis, down=True)
     return finish(img, SHAFT)
@@ -303,20 +398,21 @@ def shaft_bottom(axis):
         d.ellipse([spt(x - r, y - r), spt(x + r, y + r)], fill=(g, int(g * 0.9), int(g * 0.8)))
     # the same stairs arriving from above: they rise along the shaft wall,
     # brightening toward the light
-    top_stairs(d, axis, 110, 205)
+    stairs(d, axis, descending=False)
     stair_walls(d, axis, (40, 36, 32), None)
     stair_arrows(d, axis, down=False)
     return finish(img, SHAFT)
 
 
 frames = [drill_frame(f) for f in range(FRAMES)]
-size = DRILL_CANVAS * TILE
-sheet = Image.new("RGBA", (size * FRAMES, size), (0, 0, 0, 0))
+fw, fh = DRILL_W * TILE, DRILL_H * TILE
+sheet = Image.new("RGBA", (fw * FRAMES, fh), (0, 0, 0, 0))
 for i, f in enumerate(frames):
-    sheet.paste(f, (size * i, 0))
+    sheet.paste(f, (fw * i, 0))
 sheet.save(f"{out}/core-drill.png", optimize=True)
-shadow_of(frames[0]).save(f"{out}/core-drill-shadow.png", optimize=True)
-frames[0].crop((16, 16, size - 16, size - 16)).resize((64, 64), Image.LANCZOS).save(f"{out}/core-drill-icon.png", optimize=True)
+drill_shadow(frames[0]).save(f"{out}/core-drill-shadow.png", optimize=True)
+icon_box = (0, int(0.6 * TILE), fw, int(0.6 * TILE) + fw)
+frames[0].crop(icon_box).resize((64, 64), Image.LANCZOS).save(f"{out}/core-drill-icon.png", optimize=True)
 for axis in ("ns", "we"):
     shaft_top(axis).save(f"{out}/shaft-top-{axis}.png", optimize=True)
     shaft_bottom(axis).save(f"{out}/shaft-bottom-{axis}.png", optimize=True)

@@ -23,6 +23,19 @@ function layers.below(surface)
   return layer_configs[below_index], below_index
 end
 
+-- The surface a floor's shafts come from: the floor above, or the starting
+-- surface for floor 1. Nil for a non-floor surface.
+function layers.above(surface)
+  local _, index = layers.of_surface(surface)
+  if not index then
+    return nil
+  end
+  if index == 1 then
+    return game.surfaces.nauvis
+  end
+  return game.surfaces[layer_configs[index - 1].surface_name]
+end
+
 function layers.surface(layer)
   local surface = game.surfaces[layer.surface_name]
   if surface then

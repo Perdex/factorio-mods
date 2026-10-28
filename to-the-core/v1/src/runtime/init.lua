@@ -1,44 +1,19 @@
 local bore = require("runtime.bore")
+local bore_config = require("shared.bore")
 local layers = require("runtime.layers")
+local progression = require("runtime.progression")
 local shaft = require("runtime.shaft")
 local transfer = require("runtime.transfer")
+local veins = require("runtime.veins")
 
--- A normal start has nothing but what survived the crash: the core drill
--- and some blades in the ship, more blades in the wreckage. Wood and stone
--- come from trees and rocks.
+-- A normal start has nothing but what survived the crash: the core drill and
+-- a few wooden drill heads in the ship. Wood and stone come from trees and
+-- rocks. The wreckage holds nothing (freeplay's default would be iron).
 local starter = {
-  player = {["pistol"] = 1, ["firearm-magazine"] = 10, ["stone-furnace"] = 1},
-  ship = {["ttc-core-drill"] = 1, ["ttc-blade"] = 10},
-  debris = {["ttc-blade"] = 50}
+  player = {},
+  ship = {["ttc-core-drill"] = 1, ["ttc-wooden-drill-head"] = 5},
+  debris = {}
 }
-
--- With the "ttc-testing-kit" setting: enough to reach layer 2 and dig around.
-local testing = {
-  player = {
-    ["ttc-mk1-bore"] = 2,
-    ["ttc-item-chute"] = 10,
-    ["ttc-downpipe"] = 10,
-    ["pipe"] = 100,
-    ["offshore-pump"] = 2,
-    ["ttc-clay-drill-head"] = 200,
-    ["iron-plate"] = 200,
-    ["iron-gear-wheel"] = 50,
-    ["wood"] = 100,
-    ["stone"] = 100,
-    ["coal"] = 200,
-    ["ttc-blade"] = 100,
-    ["ttc-wooden-drill-head"] = 200,
-    ["transport-belt"] = 400,
-    ["ttc-iron-drill-head"] = 400,
-    ["ttc-reinforced-drill-head"] = 200
-  },
-  ship = {["ttc-core-drill"] = 1, ["ttc-blade"] = 10},
-  debris = {["ttc-blade"] = 50}
-}
-
-local function kit()
-  return settings.global["ttc-testing-kit"].value and testing or starter
-end
 
 local function state()
   storage.ttc = storage.ttc or {}
@@ -50,7 +25,13 @@ local function state()
 end
 
 local function enable_starter_recipes(force)
-  for _, name in ipairs({"ttc-core-drill", "ttc-iron-drill-head"}) do
+  local names = {"ttc-core-drill"}
+  -- A bore takes any drill head; saves from when dig recipes were locked
+  -- behind technologies get them enabled here.
+  for head_name in pairs(bore_config.heads) do
+    names[#names + 1] = bore_config.recipe_name(head_name)
+  end
+  for _, name in ipairs(names) do
     local recipe = force.recipes[name]
     if recipe then
       recipe.enabled = true
@@ -64,7 +45,7 @@ local function set_up_crash_site()
   if not remote.interfaces["freeplay"] then
     return
   end
-  local items = kit()
+  local items = starter
   remote.call("freeplay", "set_created_items", items.player)
   remote.call("freeplay", "set_ship_items", items.ship)
   remote.call("freeplay", "set_debris_items", items.debris)
@@ -79,7 +60,7 @@ local function on_player_created(event)
 
   if not storage.ttc.crash_site_kit and not storage.ttc.kit_given then
     storage.ttc.kit_given = true
-    for _, part in pairs(kit()) do
+    for _, part in pairs(starter) do
       for name, count in pairs(part) do
         player.insert({name = name, count = count})
       end
@@ -87,6 +68,23 @@ local function on_player_created(event)
   end
   enable_starter_recipes(player.force)
   player.print({"ttc.starter-instructions"})
+end
+
+-- Winnowers let the wind carry dust away, so they need open sky: on a floor
+-- they are taken back down.
+local function needs_open_sky(entity, player)
+  if not layers.of_surface(entity.surface) then
+    return
+  end
+  local surface, position, name = entity.surface, entity.position, entity.name
+  entity.destroy()
+  local stack = {name = name, count = 1}
+  if not (player and player.insert(stack) > 0) then
+    surface.spill_item_stack({position = position, stack = stack, allow_belts = false})
+  end
+  if player then
+    player.create_local_flying_text({text = {"ttc.needs-open-sky"}, position = position})
+  end
 end
 
 local function on_built(event)
@@ -97,11 +95,12 @@ local function on_built(event)
 
   if entity.name == shaft.drill_name then
     shaft.register(entity)
-  elseif entity.name == bore.entity_name then
-    local player = event.player_index and game.get_player(event.player_index)
-    bore.register(entity, player and player.get_main_inventory())
+  elseif bore.handles(entity) then
+    bore.register(entity)
   elseif transfer.handles(entity) then
     transfer.on_built(entity, event.player_index and game.get_player(event.player_index))
+  elseif entity.name == "ttc-winnower" then
+    needs_open_sky(entity, event.player_index and game.get_player(event.player_index))
   end
 end
 
@@ -113,7 +112,7 @@ local function on_removed(event)
 
   if entity.name == shaft.drill_name then
     shaft.unregister(entity)
-  elseif entity.name == bore.entity_name then
+  elseif bore.handles(entity) then
     bore.unregister(entity, event.buffer)
   elseif transfer.handles(entity) then
     transfer.on_removed(entity, event.buffer)
@@ -122,7 +121,7 @@ end
 
 local function on_rotated(event)
   local entity = event.entity
-  if entity and entity.valid and entity.name == bore.entity_name then
+  if entity and entity.valid and bore.handles(entity) then
     bore.on_rotated(entity)
   end
 end
@@ -138,6 +137,14 @@ end
 
 -- Lets other mods (and the engine test) ask where shaft stairs lead.
 remote.add_interface("to-the-core", {
+  -- Turns ore veins on or off (the "ttc-veins" setting), e.g. for scenarios.
+  set_veins = function(enabled)
+    settings.global["ttc-veins"] = {value = enabled}
+  end,
+  vein_at = function(surface_index, position)
+    local vein = veins.at(game.surfaces[surface_index], position)
+    return vein and vein.name
+  end,
   travel_target = function(surface_index, position, direction)
     local surface, target = shaft.travel_target(game.surfaces[surface_index], position, direction)
     return surface and {surface_index = surface.index, position = target}
@@ -164,6 +171,8 @@ script.on_event({
   defines.events.script_raised_destroy
 }, on_removed)
 script.on_event(defines.events.on_player_rotated_entity, on_rotated)
+script.on_event(defines.events.on_research_finished, progression.on_research_finished)
+script.on_event(defines.events.on_gui_opened, shaft.on_gui_opened)
 script.on_event(defines.events.on_chunk_generated, layers.on_chunk_generated)
 script.on_nth_tick(10, function()
   bore.tick()

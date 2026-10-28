@@ -9,56 +9,67 @@ Copy the `to-the-core` directory into Factorio's `mods` directory as
 a core drill and a starter supply of iron plates, stone, wood, gears, belts
 and drill heads.
 
-1. The starting surface has no ore. Salvage the core drill from the crashed
-   ship and blades from the wreckage, and gather wood and stone. Wooden drill
-   heads take 2 wood, 1 stone and a blade. Place the core drill (5x5) and feed
-   it fuel and wooden heads, one per segment. Like a rocket silo building
-   rocket parts, it crafts 20 shaft segments, each bringing up 10-20 sand and
-   20-30 clay; its status shows the progress.
+1. The starting surface has no ore. Salvage the core drill and five wooden
+   drill heads from the crashed ship, and gather wood and stone. Wooden drill
+   heads take 2 wood and 1 stone. Place the core drill (5x5) and feed
+   it fuel and drill heads: it takes any head, like the tunnel bore, and wears
+   them out hit by hit. The shaft to floor 1 is 100 hits deep (10 wooden
+   heads), each hit bringing up sand and clay; a panel beside its window shows the shaft's depth.
 2. When the shaft breaks through, a pit is left behind with stairs going down
    along its north and south rims, and the drill moves down onto a small
    landing on the first underground layer. Walk down either stairway to follow
-   it, and back up the same stairs below to return. Anything left in the drill
-   moves down with it; take it out, then feed the drill the next layer's
-   (harder) inputs. Shafts to even layers have their stairs on the west and
+   it, and back up the same stairs below to return. Everything in the drill moves
+   down with it, and it carries on with the next, deeper shaft. Shafts to even layers have their stairs on the west and
    east rims instead, so a layer's landing and its next pit don't overlap.
-3. Floor 1 reveals the Mk1 tunnel bore (2x2), built from wood, stone, clay
-   and blades; clay drill heads (shape clay, then fire it in a furnace); glass
-   (smelted from sand); and item chutes, which drop items to the floor below.
-   Like an offshore pump the bore can only be placed at the edge of open
-   ground, facing the rock wall it will dig into.
-4. Open the bore. It works like a burner assembler: a fuel slot with its own
-   burn bar, a dig recipe (picked from the drill heads you carry when placing
-   it, changeable in the GUI) and a crafting progress bar. Drill heads wear
-   out like repair packs: one craft is one head's life, and the progress bar
-   shows it wearing down. Floor 1 is clay, 40 hits per tile: two clay heads
-   and 80 s. Each tile yields about 20 clay, some stone, coal and sand. Iron is
-   on floor 2, which is four times harder.
-5. Once it has belts, the bore lays two per tile behind itself: the left lane carries
+3. The landing below is only the drill's spot and, on the stair sides, the
+   stairs and one row beyond them: reach each side by its own stairs, and
+   dig out the rest. Walking past the middle of a stairway takes you to the
+   middle of the same stairs on the other floor. Floor 1 reveals
+   the tunnel bore Mk1 (2x2, wood, clay bricks and glass), clay drill heads
+   (shape clay, then fire it in a furnace), glass (smelted from sand) and
+   bricks (fired from clay). Like an offshore pump the bore can only be
+   placed at the edge of open ground, facing the rock wall it will dig into.
+4. Open the bore. It works like a burner furnace: no recipe to choose, just
+   put in any drill head you have unlocked and it digs with it, the way a
+   turret takes any ammo. It has a fuel slot with its own burn bar and a
+   progress bar that shows the current head wearing down (heads wear out like
+   repair packs). The floor decides how hard the rock is and what comes out:
+   floor 1 is clay, 40 hits per tile: two clay heads and 40 s in a Mk1. Each tile
+   yields about 20 clay and a lot of loose stone, plus a little coal and
+   sand: getting rid of the rock is part of the job. Iron is on floor 2,
+   which is four times harder.
+5. The tunnel bore Mk2 (unlocked by finding iron) also lays two belts per
+   tile behind itself, once it has belts: the left lane carries
    supplies (fuel, heads, belts) in and the right lane carries drops out.
    Hidden loaders follow its rear to connect them. Belts that arrive on the
    supply lane go into the bore's belt stock (up to 10), so run belts on one
    lane of the supply belt and heads and fuel on the other.
-6. If anything stands in the tiles ahead, the bore pauses without consuming
+6. The rock hides veins, shown by ore on the exposed rock face: twenty
+   times harder to dig, but they yield their resource in bulk (on floor 1
+   just stone, an obstacle to dig around).
+7. If anything stands in the tiles ahead, the bore pauses without consuming
    anything and shows "Tunnel ahead is blocked".
-7. Things only flow down at first: item chutes and (from floor 2) downpipes
-   link a spot to the same spot on the floor below, which must already be
-   dug out. Water comes down from the surface's lakes; pipes need glass.
+8. Things only flow down at first: from floor 2, item chutes and downpipes
+   (and from floor 4 power connectors) link a spot to the same spot on the
+   floor below, which must already be dug out. Water comes down from the
+   surface's lakes; pipes need glass.
    See `FLOORS.md` for the plan of floors 1-5.
 
-Tunnels are edged with cliff faces. The "Testing starter kit" map setting
-(on by default) also gives the first player two bores and plenty of
-materials. The plan for floors 1-5 is in `FLOORS.md`. Run `../deploy_local.sh` to link the mod
+Digging leaves far more stone than anything needs. From floor 2, grinders
+crush it to gravel, sand and dust, and winnowers on the surface let the wind
+carry the dust away; until then it has to be stored. Tunnels are edged with cliff faces. Run `../deploy_local.sh` to link the mod
 into `~/.factorio/mods`, and `../tests/run.sh` for the headless engine test.
 
 ## Current scope
 
-This version contains two underground layers (the second is a placeholder)
-and one bore tier. The underground
-surface is void outside its small starting platform and the tunnel the bore
-opens. Its lanes automatically supply belts and drill heads to the bore and
-carry its drops away. Layers, their shaft and dig recipes (ingredients and times),
-drops and unlocks are configured in `shared/layers.lua`; the dig recipes
-are generated from it in `prototypes/bore.lua`. Graphics are rendered by the scripts in
-`../tools/`. The layer marks its starting chunks generated before
-placing tiles, avoiding normal terrain generation during entry.
+Five floors: clay; stone with iron; copper and coal; sulfur and oil; and hot
+rock that only the water-cooled Mk3 bore can dig. Three bore tiers and six
+kinds of drill head. Red, green, military and blue technologies unlock by
+reaching floors and by crafting milestones; there is no science and no lab.
+From floor 4, freight lifts and lift pumps carry things back up. A game
+starts with empty pockets.
+
+Floors, shafts, drops, veins and unlocks are configured in
+`shared/layers.lua`, drill heads and bore tiers in `shared/bore.lua`, the
+technology mapping in `shared/progression.lua`. `FLOORS.md` explains the
+plan. Graphics are rendered by the scripts in `../tools/`.

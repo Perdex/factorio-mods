@@ -1,9 +1,9 @@
 data:extend({
   {
     type = "bool-setting",
-    name = "ttc-testing-kit",
+    name = "ttc-veins",
     setting_type = "runtime-global",
     default_value = true,
-    order = "a"
+    order = "b"
   }
 })

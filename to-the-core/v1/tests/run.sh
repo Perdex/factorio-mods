@@ -5,14 +5,14 @@
 #
 # Usage: tests/run.sh [ticks]   (FACTORIO_BIN overrides the game binary)
 set -euo pipefail
-ticks="${1:-6010}"
+ticks="${1:-21010}"
 factorio="${FACTORIO_BIN:-/mnt/games/SteamLibrary/steamapps/common/Factorio/bin/x64/factorio}"
 v1="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$work/mods" "$work/write"
-ln -s "$v1/to-the-core" "$work/mods/to-the-core"
+ln -s "$v1/src" "$work/mods/to-the-core"
 ln -s "$v1/tests/ttc-test" "$work/mods/ttc-test"
 cat > "$work/mods/mod-list.json" <<JSON
 {"mods":[{"name":"base","enabled":true},{"name":"to-the-core","enabled":true},{"name":"ttc-test","enabled":true},

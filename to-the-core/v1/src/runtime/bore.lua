@@ -1,5 +1,6 @@
--- Tunnel bore: a burner crafting machine whose dig recipe wears out drill heads
--- while burning fuel. One craft is one head's whole life: its hits land on the
+-- Tunnel bore: a burner furnace whose dig recipe wears out drill heads while
+-- burning fuel; the inserted head picks the recipe (runtime/wear.lua). Each
+-- hit brings out some of the floor's rock. One craft is one head's whole life: its hits land on the
 -- wall ahead as the craft progresses, and after the layer's hits_per_tile hits
 -- the bore breaks through and advances one tile (mid-craft if need be),
 -- opening the tunnel in front, laying a supply lane and an output lane behind
@@ -9,8 +10,9 @@ local layers = require("shared.layers")
 local bore_config = require("shared.bore")
 local research = require("runtime.research")
 local tunnel = require("runtime.tunnel")
+local veins = require("runtime.veins")
+local wear = require("runtime.wear")
 
-local bore_name = bore_config.entity_name
 local loader_name = "loader-1x1"
 
 local layers_by_surface = {}
@@ -25,9 +27,9 @@ local forward_vectors = {
   [defines.direction.west] = {x = -1, y = 0}
 }
 
-local is_wall = {}
-for _, name in ipairs(tunnel.wall_names) do
-  is_wall[name] = true
+local bore_names = {}
+for name in pairs(bore_config.tiers) do
+  bore_names[#bore_names + 1] = name
 end
 
 local bore = {}
@@ -50,13 +52,23 @@ local function relative(entity, along, across)
   }
 end
 
+local function width_of(entity)
+  return bore_config.tiers[entity.name].width or 2
+end
+
 local function front_tiles(entity)
-  return {relative(entity, 1.5, -0.5), relative(entity, 1.5, 0.5)}
+  local width = width_of(entity)
+  local tiles = {}
+  for i = 0, width - 1 do
+    tiles[#tiles + 1] = relative(entity, 1.5, i - (width - 1) / 2)
+  end
+  return tiles
 end
 
 -- Input loader on the rear left, output loader on the rear right.
 local function rear_tiles(entity)
-  return relative(entity, -1.5, -0.5), relative(entity, -1.5, 0.5)
+  local half = (width_of(entity) - 1) / 2
+  return relative(entity, -1.5, -half), relative(entity, -1.5, half), relative(entity, -1.5, 0)
 end
 
 -- Stops the bore with a red status, or (status_key nil) lets it run.
@@ -105,9 +117,13 @@ local function create_loader(entity, position, loader_type)
   return loader
 end
 
+-- Only belt-laying bores (Mk2) have loaders at their rear.
 local function attach_loaders(state)
+  if not state.lays_belts then
+    return
+  end
   local entity = state.entity
-  local input_position, output_position = rear_tiles(entity)
+  local input_position, output_position, pipe_position = rear_tiles(entity)
   if not (state.input_loader and state.input_loader.valid) then
     state.input_loader = create_loader(entity, input_position, "input")
   end
@@ -120,61 +136,106 @@ end
 -- to its limit. The loader can't insert them (they are no dig recipe
 -- ingredient), so once the stock is full they back up their lane while the
 -- other lane keeps delivering heads and fuel.
+local function collect(loader, item, stock, limit)
+  for index = 1, loader.get_max_transport_line_index() do
+    local line = loader.get_transport_line(index)
+    local count = math.min(line.get_item_count(item), limit - stock)
+    if count > 0 then
+      stock = stock + line.remove_item({name = item, count = count})
+    end
+  end
+  return stock
+end
+
 local function collect_belts(state)
+  if not state.lays_belts then
+    return
+  end
   local loader = state.input_loader
   if not (loader and loader.valid) then
     return
   end
-  for index = 1, loader.get_max_transport_line_index() do
-    local line = loader.get_transport_line(index)
-    local count = math.min(
-      line.get_item_count(bore_config.paving_item),
-      bore_config.belt_stock_limit - state.belt_stock
-    )
-    if count > 0 then
-      state.belt_stock = state.belt_stock
-        + line.remove_item({name = bore_config.paving_item, count = count})
-    end
+  state.belt_stock = collect(loader, bore_config.paving_item, state.belt_stock, bore_config.belt_stock_limit)
+  if state.lays_pipes then
+    state.pipe_stock = collect(loader, bore_config.pipe_item, state.pipe_stock, bore_config.pipe_stock_limit)
   end
 end
 
-local function lay_belt(entity, position, direction)
+local function lay_belt(entity, position, direction, item)
   local surface = entity.surface
   local belt = {
-    name = bore_config.paving_item,
+    name = item or bore_config.paving_item,
     position = position,
     direction = direction,
     force = entity.force
   }
-  if surface.can_place_entity(belt) and surface.create_entity(belt) then
-    return
+  if surface.can_place_entity(belt) then
+    local created = surface.create_entity(belt)
+    if created then
+      return created
+    end
   end
   surface.spill_item_stack({
     position = position,
-    stack = {name = bore_config.paving_item, count = 1},
+    stack = {name = item or bore_config.paving_item, count = 1},
     force = entity.force,
     allow_belts = false
   })
 end
 
+local wire_ids = {defines.wire_connector_id.circuit_red, defines.wire_connector_id.circuit_green}
+
+-- What the bore's red and green wires are connected to, by wire.
+local function circuit_targets(entity)
+  local targets = {}
+  for _, id in ipairs(wire_ids) do
+    local connector = entity.get_wire_connector(id, false)
+    if connector then
+      for _, connection in pairs(connector.connections) do
+        if connection.origin == defines.wire_origin.player then
+          targets[id] = targets[id] or {}
+          table.insert(targets[id], connection.target)
+        end
+      end
+    end
+  end
+  return targets
+end
+
+-- Keeps the bore wired as it moves: the newly laid supply belt takes over
+-- the bore's connections and the bore connects to that belt, so the wire
+-- runs along the supply lane back to wherever it was attached.
+local function carry_wires(entity, targets, belt)
+  for id, wired in pairs(targets) do
+    local bore_connector = entity.get_wire_connector(id, true)
+    local belt_connector = belt.get_wire_connector(id, true)
+    for _, target in ipairs(wired) do
+      if target.valid and belt_connector.connect_to(target) then
+        bore_connector.disconnect_from(target)
+      end
+    end
+    bore_connector.connect_to(belt_connector)
+  end
+end
+
 local function front_blocker(entity, layer)
   local surface = entity.surface
   local tiles = front_tiles(entity)
-  local left_top = {
-    x = math.min(tiles[1].x, tiles[2].x) - 0.45,
-    y = math.min(tiles[1].y, tiles[2].y) - 0.45
-  }
-  local right_bottom = {
-    x = math.max(tiles[1].x, tiles[2].x) + 0.45,
-    y = math.max(tiles[1].y, tiles[2].y) + 0.45
-  }
+  local left_top = {x = math.huge, y = math.huge}
+  local right_bottom = {x = -math.huge, y = -math.huge}
+  for _, tile in ipairs(tiles) do
+    left_top = {x = math.min(left_top.x, tile.x - 0.45), y = math.min(left_top.y, tile.y - 0.45)}
+    right_bottom = {x = math.max(right_bottom.x, tile.x + 0.45), y = math.max(right_bottom.y, tile.y + 0.45)}
+  end
   local blockers = surface.find_entities_filtered({
     area = {left_top, right_bottom},
     type = {"resource", "item-entity", "entity-ghost", "tile-ghost", "corpse", "highlight-box"},
     invert = true
   })
+  -- Things nothing collides with (cliff faces, vein ore, the landing under a
+  -- core drill) don't stand in the way.
   for _, blocker in pairs(blockers) do
-    if not is_wall[blocker.name] then
+    if next(blocker.prototype.collision_mask.layers) then
       return "front-blocked"
     end
   end
@@ -189,13 +250,31 @@ local function front_blocker(entity, layer)
 end
 
 -- Hits needed to advance: a full wall's worth, or one if the way is already open.
-local function hits_needed(entity, layer)
+-- The rock ahead: hits needed to break through, what each hit brings out, and
+-- the vein it belongs to, if any (the hardest of the two tiles counts). One
+-- hit is enough where the way is already open.
+local function rock_ahead(entity, layer)
+  local solid, vein = false, nil
   for _, position in ipairs(front_tiles(entity)) do
     if tunnel.is_void(entity.surface, position) then
-      return layer.hits_per_tile
+      solid = true
+      local found = veins.at(entity.surface, position)
+      if found and (not vein or found.hardness > vein.hardness) then
+        vein = found
+      end
     end
   end
-  return 1
+  if not solid then
+    return 1, layer.drops
+  end
+  if vein then
+    return layer.hits_per_tile * vein.hardness, vein.drops, vein
+  end
+  return layer.hits_per_tile, layer.drops
+end
+
+local function hits_needed(entity, layer)
+  return (rock_ahead(entity, layer))
 end
 
 -- Chips of rock flying off the wall ahead, one burst per hit.
@@ -234,9 +313,33 @@ local function advance(state, layer)
   local surface = entity.surface
   local forward = forward_vectors[entity.direction]
 
-  tunnel.open(surface, front_tiles(entity), layer.tunnel_tile)
+  -- Breaking into a vein that holds a resource (an oil pocket) leaves it
+  -- there, once per vein.
+  local front = front_tiles(entity)
+  local springs = {}
+  for _, position in ipairs(front) do
+    if tunnel.is_void(surface, position) then
+      local vein, key = veins.at(surface, position)
+      if vein and vein.resource then
+        springs[#springs + 1] = {vein = vein, key = key, position = position}
+      end
+    end
+  end
+  tunnel.open(surface, front, layer.tunnel_tile)
+  storage.ttc.vein_resources = storage.ttc.vein_resources or {}
+  for _, spring in ipairs(springs) do
+    if not storage.ttc.vein_resources[spring.key] then
+      storage.ttc.vein_resources[spring.key] = true
+      surface.create_entity({
+        name = spring.vein.resource.name,
+        position = {x = math.floor(spring.position.x) + 0.5, y = math.floor(spring.position.y) + 0.5},
+        amount = spring.vein.resource.amount
+      })
+    end
+  end
 
   local input_position, output_position = rear_tiles(entity)
+  local wires = circuit_targets(entity)
   destroy_loaders(state)
   if not entity.teleport({
     x = entity.position.x + forward.x,
@@ -247,48 +350,35 @@ local function advance(state, layer)
   end
 
   -- Without belts (no iron yet) the tunnel is left bare.
-  if state.belt_stock >= bore_config.paving_count then
-    lay_belt(entity, input_position, entity.direction)
+  -- Coolant bores lay a pipe right behind their inlet (no loader sits there),
+  -- so the water line follows.
+  if state.lays_pipes and state.pipe_stock >= 1 then
+    local _, _, pipe_position = rear_tiles(entity)
+    lay_belt(entity, pipe_position, defines.direction.north, bore_config.pipe_item)
+    state.pipe_stock = state.pipe_stock - 1
+  end
+  if state.lays_belts and state.belt_stock >= bore_config.paving_count then
+    local supply_belt = lay_belt(entity, input_position, entity.direction)
     lay_belt(entity, output_position, opposite(entity.direction))
     state.belt_stock = state.belt_stock - bore_config.paving_count
+    if supply_belt then
+      carry_wires(entity, wires, supply_belt)
+    end
   end
   attach_loaders(state)
   return true
 end
 
--- Picks the best unlocked dig recipe (the last one listed), preferring one
--- whose drill head is in `inventory` (the builder's), if given.
-local function default_recipe(entity, layer, inventory)
-  local fallback
-  for index = #layer.dig_recipes, 1, -1 do
-    local dig_recipe = layer.dig_recipes[index]
-    local name = bore_config.recipe_name(layer, dig_recipe)
-    if entity.force.recipes[name].enabled then
-      if not inventory or inventory.get_item_count(bore_config.heads[dig_recipe.head].item) > 0 then
-        return name
-      end
-      fallback = fallback or name
-    end
-  end
-  return fallback
-end
-
-function bore.register(entity, inventory)
-  local state = {
-    entity = entity,
-    products_finished = entity.products_finished,
-    hits = 0,
-    belt_stock = 0
-  }
+function bore.register(entity)
+  local state = wear.new_state(entity)
+  state.entity = entity
+  state.hits = 0
+  state.belt_stock = 0
+  state.pipe_stock = 0
+  state.lays_pipes = bore_config.tiers[entity.name].lays_pipes
+  state.lays_belts = bore_config.tiers[entity.name].lays_belts
+  state.coolant = bore_config.tiers[entity.name].coolant
   bores()[entity.unit_number] = state
-
-  local layer = layers_by_surface[entity.surface.name]
-  if layer and not entity.get_recipe() then
-    local recipe = default_recipe(entity, layer, inventory)
-    if recipe then
-      entity.set_recipe(recipe)
-    end
-  end
   attach_loaders(state)
 end
 
@@ -298,6 +388,9 @@ function bore.unregister(entity, buffer)
   if state then
     if buffer and state.belt_stock > 0 then
       buffer.insert({name = bore_config.paving_item, count = state.belt_stock})
+    end
+    if buffer and (state.pipe_stock or 0) > 0 then
+      buffer.insert({name = bore_config.pipe_item, count = state.pipe_stock})
     end
     destroy_loaders(state)
     bores()[entity.unit_number] = nil
@@ -313,18 +406,29 @@ function bore.on_rotated(entity)
 end
 
 -- While running, shows wall progress in place of the plain "Working" status.
+local function progress_label(state, layer)
+  local needed, _, vein = rock_ahead(state.entity, layer)
+  local hits = math.floor(state.hits)
+  local vein_name = vein and {"ttc-vein-name." .. vein.name}
+  if state.lays_belts then
+    local stock, limit = state.belt_stock, bore_config.belt_stock_limit
+    if vein then
+      return {"ttc-status.digging-vein-belts", hits, needed, vein_name, stock, limit}
+    end
+    return {"ttc-status.digging", hits, needed, stock, limit}
+  end
+  if vein then
+    return {"ttc-status.digging-vein", hits, needed, vein_name}
+  end
+  return {"ttc-status.digging-no-belts", hits, needed}
+end
+
 local function show_progress(state, layer)
   local entity = state.entity
   if entity.status == defines.entity_status.working then
     entity.custom_status = {
       diode = defines.entity_status_diode.green,
-      label = {
-        "ttc-status.digging",
-        math.floor(state.hits),
-        hits_needed(entity, layer),
-        state.belt_stock,
-        bore_config.belt_stock_limit
-      }
+      label = progress_label(state, layer)
     }
   else
     entity.custom_status = nil
@@ -339,36 +443,38 @@ local function update(state)
     return
   end
 
-  local recipe = entity.get_recipe()
-  if recipe and bore_config.recipe_layers[recipe.name] ~= layer then
-    set_status(state, "wrong-layer")
+  -- Hot floors need a coolant-cooled bore.
+  if layer.needs_coolant and not state.coolant then
+    set_status(state, "too-hot")
     return
   end
 
-  -- Hits dealt by the current recipe so far: worn-out heads plus the wear on
-  -- the one in use. A recipe change restarts the craft, so any progress since
-  -- then already belongs to the new recipe.
-  local head = recipe and bore_config.recipe_heads[recipe.name]
-  local dealt = head and (entity.products_finished + entity.crafting_progress) * head.durability or 0
-  local recipe_name = recipe and recipe.name
-  if state.recipe_name ~= recipe_name then
-    state.recipe_name = recipe_name
-    state.dealt = head and entity.products_finished * head.durability or 0
+  -- Coolant-cooled bores stop without water.
+  local water = state.coolant and entity.get_fluid(1)
+  if state.coolant and (not water or water.amount < state.coolant) then
+    set_status(state, "needs-coolant")
+    return
   end
-  if dealt > state.dealt then
-    local hits = state.hits + dealt - state.dealt
-    if math.floor(hits) > math.floor(state.hits) then
-      hit_effect(entity)
-    end
-    state.hits = hits
-  end
-  state.dealt = dealt
 
-  local finished = entity.products_finished
-  if finished > state.products_finished then
+  -- Each hit on the wall brings out some of the floor's rock.
+  local dealt, whole = wear.update(state, entity, bore_config.recipe_heads)
+  if water and whole > 0 then
+    entity.remove_fluid(1, math.min(water.amount, whole * state.coolant))
+  end
+  state.hits = state.hits + dealt
+  if whole > 0 then
+    hit_effect(entity)
+    local _, drops = rock_ahead(entity, layer)
+    wear.roll(state, drops, whole)
+  end
+  local delivered_all, delivered = wear.deliver(state, entity)
+  if delivered then
     unlock_discoveries(entity, layer)
   end
-  state.products_finished = finished
+  if not delivered_all and entity.get_recipe() then
+    set_status(state, "output-full")
+    return
+  end
   collect_belts(state)
 
   -- Also pauses digging before a hit lands on a tile the bore can't enter.
@@ -415,7 +521,7 @@ function bore.rescan()
     end
   end
   for _, surface in pairs(game.surfaces) do
-    for _, entity in pairs(surface.find_entities_filtered({name = bore_name})) do
+    for _, entity in pairs(surface.find_entities_filtered({name = bore_names})) do
       if not known[entity.unit_number] then
         bore.register(entity)
       end
@@ -423,6 +529,8 @@ function bore.rescan()
   end
 end
 
-bore.entity_name = bore_name
+function bore.handles(entity)
+  return bore_config.tiers[entity.name] ~= nil
+end
 
 return bore

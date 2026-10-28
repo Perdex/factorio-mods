@@ -8,8 +8,9 @@ local shaft = {
   -- stairs use, so a layer's landing and its next pit never overlap: shafts
   -- into odd layers use "ns" (north and south rims), even layers "we".
   axes = {"ns", "we"},
-  -- Both are 7x7 around the 5x5 drill; the lower layer's platform adds a
-  -- margin of open ground around that.
+  -- Both are 7x7 around the 5x5 drill. The landing below opens only the
+  -- drill's spot and the stairs, plus `platform_margin` rows beyond them:
+  -- room for a 2x2 tunnel bore, since nothing can be built on the stairs.
   size = 7,
   platform_margin = 2
 }
@@ -40,8 +41,22 @@ shaft.stairs = {
   }
 }
 
-function shaft.recipe_name(layer)
-  return "ttc-shaft-" .. layer.name
+-- The core drill is a furnace that takes the same drill heads as the tunnel
+-- bore (shared/bore.lua): one shaft dig recipe per head, any floor.
+-- Invisible strips over each stairway that keep buildings (and tunnel bores)
+-- off the stairs but let players walk: "ns" stairs run east-west, "we" stairs
+-- north-south.
+function shaft.stair_blocker_name(axis)
+  return "ttc-stairs-" .. axis
+end
+
+function shaft.recipe_name(head_name)
+  return "ttc-shaft-" .. head_name
+end
+
+shaft.recipe_heads = {}
+for head_name, head in pairs(require("shared.bore").heads) do
+  shaft.recipe_heads[shaft.recipe_name(head_name)] = head
 end
 
 return shaft

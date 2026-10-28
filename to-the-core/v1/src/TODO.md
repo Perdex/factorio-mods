@@ -1,202 +1,159 @@
 # To the Core — TODO
 
 Design goal (from the original brief): replace science-based progression with
-digging. Start with almost nothing, dig down with core drills to new layers
-(surfaces), dig sideways with tunnel bores that need a constant supply of
-materials from the previous layer, and open the tech tree through trigger
-technologies as new depths are reached. Levels, drops and unlocks must stay
-easy to configure for balancing.
+digging. Start with almost nothing, dig down with core drills to new floors,
+dig sideways with tunnel bores that need a constant supply of materials, and
+open the tech tree as new depths are reached. Floors, drops and unlocks stay
+easy to configure for balancing. `FLOORS.md` has the floor-by-floor plan.
 
 Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 
 ---
 
-## 0. Known bugs / tech debt
+## Next up
 
-- [x] **Underground platform could be wiped by terrain generation.** All
-  tunnel/platform tiles now go through `runtime/tunnel.lua`, which generates
-  the chunk first (or marks it generated when it lies outside the 1x1 layer
-  map, where generation never runs). Covered by the engine test.
-- [x] Removed the old-save migration hacks (`layer_surface_version`,
-  `void_area(..., preserve_existing)`, origin-portal relocation). No save
-  migrations until the first public release.
-- [x] `deploy_local.sh` symlinks the working copy into the mods directory.
-- [x] `first_layer` hard-coding removed; layers are looked up by surface
-  (`runtime/layers.lua`).
-- [x] Technology icon for `ttc-mk1-bore` uses the bore icon.
+1. **Playtest from an empty start** against the pacing target (20–40 h in
+   total, 5–10 h to floor 5, 1–2 h for speedrunners; see `FLOORS.md`): soft-locks, pacing of floors 1–5, stair feel, the left cliff
+   wall, vein visibility, the core drill depth bar.
+2. **Getting rid of rock** — grinders (3:2 per step, 3x slower per step,
+   from floor 2) and surface-only winnowers. Playtest whether it's hard
+   enough, and whether dust should also be usable (e.g. as filler).
+3. **Floors 6+** for production, utility and space science, and a win
+   condition.
+
+## Known quirks
+
+- [ ] Dig recipes list every possible drop as an amount-0 product (so the
+  furnace output slots accept them); the recipe tooltips show those.
+- [ ] Furnace input is one slot: a bore or core drill only takes another kind
+  of head once the current kind is used up (shift-click does nothing).
+- [ ] The head being worn when a core drill moves down comes back whole.
+- [ ] Switching head type mid-dig loses up to 10 ticks of wear.
+- [ ] A bore without belts can't carry its circuit wire along; it stays put
+  and may end up out of reach.
 
 ## 1. Tunnel bore
 
-- [x] 2x2 footprint with proper 4-direction graphics and cutter animation.
-- [x] Rotatable (via an always-on rear-left fluid box).
-- [x] Burner energy source with native fuel bar; native crafting progress bar.
-- [x] Dig recipes generated per layer from `shared/layers.lua`; consume drill
-  head + 2 belts per tile; drops are recipe results.
-- [x] Each craft is one hit on the wall; after `hits_per_tile` hits (10 on
-  layer 1) it breaks through, opens the tiles, lays supply/output belt lanes
-  and moves the hidden loaders along. Status shows hits and belt stock.
-- [x] Paving belts are pulled off the supply lane into a belt stock of up to
-  10 (returned when the bore is mined), not consumed by the dig recipe.
-- [x] Placeable only at the edge of open ground facing rock, like an offshore
-  pump (`tile_buildability_rules`).
-- [x] Sprite frames are 4x4 tiles so the cutter head overlaps the wall ahead.
-- [x] Rock-chip particles on every hit.
-- [x] Pauses with a custom status when the tiles ahead are blocked.
-- [ ] Verify in the real client (headless tests only so far): GUI layout,
-  rotation feel, sprite alignment, shadow, working sound, alt-mode icon.
-- [ ] Decide what the rear fluid box is for. Options: coolant input for deeper
-  layers, or hide it with pipe covers until a fluid recipe is selected.
-- [ ] Auto-switch to a better dig recipe when one is unlocked (currently the
-  player has to change it in the GUI), or at least notify the player.
-- [ ] Hide recipes of other layers from the bore's recipe picker (currently
-  they are selectable and only rejected with a "wrong layer" status).
-- [ ] Hit sound effect.
-- [x] Drill heads wear out like repair packs (`heads` in `shared/bore.lua`):
-  wooden 10 hits at 2 s, iron 40 at 0.5 s, reinforced 120 at 0.25 s. One dig
-  craft is one head's life; hits accrue continuously from crafting progress
-  and drops are paid out per head as a range around the expected amount.
-- [x] Layer 1 is clay (40 hits/tile, ~1 iron head and 40 s per tile)
-  yielding ~20 clay and ~6 iron ore per tile, so iron heads and belts pay for
-  themselves.
-- [ ] Balance check in play: wooden heads (2 wood, 1 stone, 1 blade) 4 per
-  tile; iron 1 per tile; ~60 salvaged blades before iron.
-- [ ] Belts that can't be laid (occupied tile) are spilled on the ground —
-  consider returning them to the output lane or refunding into the bore.
-- [ ] Stop condition / range: what happens at map edges or when hitting
-  another tunnel? Joining tunnels should probably connect belts cleanly.
-- [ ] Turning: a rotated bore mid-tunnel leaves a belt corner problem. Decide
-  whether bores can turn in place, or must be picked up and re-placed.
-- [ ] Optional circuit connection (read progress / enable-disable).
-- [ ] Remote view / map visibility of tunnels (chart revealed tiles).
-- [ ] Higher bore tiers (Mk2/Mk3): faster, wider tunnel (3-4 tiles), electric
-  or fluid fuel, more output slots. Make the 2-tile geometry in
-  `runtime/bore.lua` width-configurable first.
-- [ ] Tunnel width option: wider tunnels for building space vs. narrow mining
-  shafts.
-- [ ] Sound and visual feedback when a tile is dug (particles, dust, sound).
+- [x] Three tiers: Mk1 (speed 1, no belts), Mk2 (speed 2, lays belt lanes,
+  unlocked by finding iron), Mk3 (speed 5, water coolant 1 per hit, unlocked
+  after 200 steel plates).
+- [x] Heads hit three times as fast per tier (wooden 10 hits, clay 20, iron
+  80, reinforced 500), so veins are long but feasible projects.
+- [x] Mk1/Mk2 are 2x2, rotatable (a connectionless fluid box keeps a square
+  furnace rotatable), 4-direction sprites with the cutter overlapping the wall
+  ahead; placeable only at the edge of open ground facing rock.
+- [x] Mk3 is 3 wide and 2 long with two cutters: supply loader, water inlet
+  and output loader across its back. It lays a pipe behind its inlet per tile
+  from a pipe stock of up to 10, pulled off the supply lane (returned when
+  mined), so the water line follows it.
+- [x] Burner furnace: any drill head goes in, like ammo in a turret, and picks
+  its dig recipe. Heads wear out like repair packs; the crafting bar is the
+  head's wear. Dig recipes are always enabled; crafting heads unlocks.
+- [x] Wall hardness per floor (`hits_per_tile`); each hit rolls the floor's
+  drops (`runtime/wear.lua`), with rock-chip particles. Output-full pauses.
+- [x] Mk2 lays supply/output belt lanes from a belt stock of up to 10, pulled
+  off the supply lane; without belts it leaves a bare tunnel. Hidden loaders
+  follow its rear.
+- [x] Circuit connection; its wires follow the bore along the supply lane.
+- [x] Pauses with a status when the tiles ahead are blocked.
+- [ ] Belts that can't be laid (occupied tile) are spilled on the ground.
+- [ ] Meeting another tunnel or the map edge; joining belt lanes cleanly.
+- [ ] Turning: rotating mid-tunnel breaks the belt lanes.
+- [ ] Higher tiers (Mk2/Mk3): faster, wider tunnels, electric or fluid fuel.
+- [ ] Hit and break-through sounds; dust.
+- [ ] Map visibility of tunnels (chart dug tiles).
 
-## 2. Underground layers
+## 2. Floors
 
-See `FLOORS.md` for the plan of floors 0-5 (for review).
+- [x] Floors 1–3 in `shared/layers.lua`: clay with lots of loose stone (40
+  hits/tile), stone with a little iron (160), copper, coal and more iron (640,
+  rough). Surfaces `ttc-floor-N`.
+- [x] Cliff walls cut from the base game's cliff textures, continuing 4-tile
+  runs along a wall; thin walls get a short face.
+- [x] Floors 4 (sulfur, oil pockets) and 5 (hot rock: Mk3 only, uranium).
+- [ ] Floors 6+ for the second half of the game.
+- [x] Ore veins in the rock (`veins` per floor, `runtime/veins.lua`): placed
+  from the map seed, shown by base ore sprites on exposed rock, 20x harder,
+  rich in their resource. Floor 1 stone; floor 2 stone and iron; floor 3
+  copper, coal and iron. "Ore veins" setting; remote `set_veins`/`vein_at`.
+- [ ] Rare finds (geodes, artifacts).
+- [x] Heat on floor 5: bores without coolant stop.
+- [ ] More hazards: gas, flooding, collapses.
+- [ ] Power and pollution underground: how does electricity get down?
+- [ ] Wall polish: cliff shadows, corner pieces, per-floor tint.
+- [ ] Per-floor ambience: lighting, tunnel tile, wall tint.
 
+## 3. Core drill, shafts and travel
 
-- [x] Runtime is layer-indexed. `upper_crust` is real; `lower_crust` is a
-  placeholder (shaft needs stone bricks + reinforced heads; copper/coal drops).
-- [ ] Define the full layer list in `shared/layers.lua`, e.g.
-  1. Upper crust — stone, iron ore; iron drill heads.
-  2. Lower crust — copper/coal; iron-copper drill heads.
-  3. Mantle edge — heat; drill heads + cooling fluid.
-  4. Mantle — …
-  5. Core — win condition.
-- [ ] Per-layer config fields to add: tunnel tile, wall tile/visual, ambient
-  light/daytime, required bore tier, required fluid, dig speed modifier,
-  hazards.
-- [x] Wall visuals: cliff-face pieces per open side/diagonal of each rock
-  tile (`ttc-tunnel-wall-<piece>`, art from `tools/wall_gfx.py`).
-- [ ] Wall art polish: less regular strata, shading/AO on the floor at the
-  wall base, variation per layer.
-- [ ] Ore patches hidden in the walls: when a bore digs into a pre-seeded patch
-  area, place resource entities in the tunnel (configurable per layer: ore,
-  frequency, size, richness). Pre-generate patch locations deterministically
-  per surface seed.
-- [ ] Rare drops and special finds (geodes, artifacts) that feed unlocks.
-- [ ] Layer hazards for later layers: heat (needs cooling), gas pockets,
-  water flooding, collapses, underground creatures.
-- [ ] Power and pollution underground: decide whether pollution exists and
-  how electricity reaches lower layers (cables through core drill shafts?).
-
-## 3. Core drill and layer travel
-
-- [x] Core drill is a 5x5 burner machine that crafts shaft segments like a
-  rocket silo builds rocket parts (`shaft` per layer in `shared/layers.lua`).
-- [x] On breakthrough: a 7x7 pit stays behind with stairs running down along
-  two opposite rims, the layer below gets an 11x11 landing (shaft + 2 tiles)
-  where the same stairs arrive, and the drill moves down with its fuel and
-  contents. It keeps the old recipe until its leftovers are taken out, then
-  switches to the next layer's shaft. Stairs alternate north/south and
-  west/east rims by depth so landings and pits never overlap.
-- [x] Shaft ends are linked in `storage.ttc.shafts`; any number of shafts and
-  layers.
-- [x] Stair travel is covered by the engine test via the `to-the-core`
-  remote interface (`travel_target`).
-- [ ] Playtest the stair feel: trigger at the low/high end, arrival one tile
-  past the stairs.
-- [ ] Shaft art polish: depth/parallax in the pit, lighting from above on the
-  landing, smoke/dust while drilling, breakthrough effect and sound.
-- [ ] Core drill GUI: a dedicated segment progress bar (like the rocket silo's)
-  instead of only the status text.
-- [ ] What if the landing spot below is blocked by player builds: currently
-  the drill waits with "landing blocked"; maybe clear or relocate instead.
-- [~] Shaft inputs per layer: wooden heads → sand and clay into layer 1, iron
-  heads → ~a stack of stone per segment into layer 2. Layer 2+ still need
-  real designs.
-- [x] One-way transfer down: item chute (floor 1) and downpipe (floor 2),
-  `runtime/transfer.lua`. Outlet appears directly below on open ground.
-- [ ] Lifting up: freight lift (floor 4) and lift pump (floor 5).
-- [ ] Item chute throughput limit / sprites polish.
-- [ ] Vehicle / train travel between layers (later).
-- [ ] Travel UX: tooltip or flying text on the stairs; maybe a hotkey to use
-  the nearest shaft.
+- [x] 5x5 burner furnace taking any drill head (crafting speed 4). Shafts are
+  `hits` deep with per-hit drops: 100 to floor 1 (sand, clay), 400 to
+  floor 2 (both dug by hand-fed drills), then 10 000 to floor 3, 40 000 to
+  floor 4 and 100 000 to floor 5 (~15–20 min of digging each), leaving
+  2 000–5 000 stone: getting rid of it is the real limit. Crafting one needs
+  steel and circuits. Each break-through message hints at the ground below.
+- [x] The burner inserter is a mechanical inserter (no fuel), so floor 2
+  can be automated.
+- [x] Break-through clears the site (buildings are mined and dropped on the
+  ground with their contents), leaves a 7x7 pit with stairs along two rims,
+  and opens a landing below: the drill's spot plus, on the two stair sides
+  only, the stairs and two rows beyond (room for a bore), as wide as the
+  drill. Each side is reached by its own stairs. Walking past the middle of
+  the stairs switches floors, landing mid-stairs. The drill moves down with
+  everything in it and digs on. Stair rims alternate by depth.
+- [x] Nothing can be built on the stairs: invisible blockers stop buildings,
+  belts and vehicles but not players. Pit stairs on a floor are cut one tile
+  longer at each end so they join the ground around them.
+- [x] Shaft links per direction (`storage.ttc.shafts`), rebuilt from the
+  pits for older saves. Stair travel covered by the engine test.
+- [x] One-way transfer down: item chute and downpipe (floor 2), power
+  connector (floor 4: hidden energy interfaces under twin poles).
+- [ ] Power connector graphics (reuses the medium electric pole).
+- [x] Depth bar panel beside the core drill's window.
+- [ ] Shaft drops and depths for floors 3+ need real designs.
+- [ ] Landing spot blocked by player builds: currently waits; clear/relocate?
+- [ ] Item chute sprite polish (throughput stays unlimited: one tile can't
+  be loaded fast anyway).
+- [ ] Travel UX: hint on the stairs, maybe a hotkey.
+- [ ] Shaft art: depth in the pit, light on the landing, break-through effect.
+- [ ] Vehicles/trains between floors (later).
 
 ## 4. Progression and tech tree
 
-- [ ] Strip the base tech tree down to "very basic technologies" at start.
-  Decide approach: disable most base technologies and re-enable them as
-  trigger technologies, or replace science packs entirely.
-- [ ] Make unlocks data-driven per layer: `unlocks` in `shared/layers.lua`
-  already maps item → technology; extend with triggers like "reach layer N",
-  "dig N tiles", "find ore X", "craft item Y".
-- [ ] Use Factorio 2.x `research_trigger` technologies where possible instead
-  of script-researched ones (`craft-item`, `mine-entity`, `build-entity`,
-  `scripted` triggers), so the tech tree shows the condition.
-- [ ] Map base-game technologies to layers (e.g. automation on layer 1,
-  logistics on layer 2, oil on layer 4) in a single config table.
-- [ ] Decide fate of science packs and labs: remove, keep for infinite research
-  only, or convert labs into something depth-related.
-- [ ] Win condition: reaching the core.
+- [x] No science or labs. Red/green technologies unlock by floor arrivals and
+  crafting/building triggers (`shared/progression.lua`); floor arrivals and
+  discoveries (iron, copper) use scripted triggers.
+- [x] Automation unlocks with the first 100 smelted iron plates.
+- [x] Military and blue tiers mapped (floor 4–5 arrivals, crafting and fluid
+  milestones); research speed 3–4 and uranium mining removed.
+- [ ] Production/utility/space tiers (floors 6+), win condition.
+- [ ] Freeplay intro / tips explaining the loop.
 
-## 5. Start of game / world
+## 5. Start and items
 
-- [x] No ore on the starting surface (`prototypes/world.lua` strips resource
-  autoplace from Nauvis; trees and rocks stay).
-- [x] Sand → glass (pipes need glass); clay → unfired → fired clay drill
-  heads for floor 1. Iron moved to floor 2.
-- [ ] Map base technologies onto floor arrivals/discoveries (`FLOORS.md`
-  tech mapping), reaching the chemical tier by floor 5.
-- [ ] Floors 4-5 configs; floor 3 shaft inputs.
-- [x] Start from the freeplay crash site: core drill and blades in the ship,
-  more blades in the wreckage (`set_up_crash_site` in `runtime/init.lua`);
-  the tunnel bore needs no iron (wood, stone, clay, blades).
-- [ ] Freeplay scenario intro / tips explaining the loop.
-- [ ] Multiplayer / multiple forces: check that per-force state (home drills,
-  bores, unlocks) is correct.
+- [x] No ore on the surface. Crash site: core drill and 5 wooden drill heads
+  in the ship, nothing in the wreckage, empty pockets.
+- [x] Drill heads: wooden (wood, stone), clay (shaped, then fired), iron (iron
+  discovery), reinforced (10 steel plates crafted).
+- [x] Sand → glass (pipes, lamps); clay → clay bricks (5:1; the base stone
+  brick, renamed; boilers, steam engines, bore Mk1).
+- [x] Rock disposal from floor 2: grinder (burner, 2x2, 3:2 per step) and
+  winnower (3x3, wind-powered, surface only), `prototypes/grinding.lua`, art
+  from `tools/grinding_gfx.py`. The electric mining drill is removed: ore comes from digging.
+- [x] Hardened (plastics) and carbide (floor 5) drill heads; Mk3 bores use
+  water as coolant.
+- [ ] Balance pass on dig times, fuel, heads and drops per floor.
 
-## 6. Items and recipes
+## 6. Polish
 
-- [ ] Drill head chain per layer: iron → iron-copper → … with recipes using
-  previous-layer materials.
-- [ ] Coolant fluid and its production chain.
-- [ ] Use for stone (the main by-product): bricks, landfill-like fill for
-  tunnels, walls; at minimum make dumping it easy early on.
-- [ ] Balance pass: dig time, fuel per tile, heads per tile, drop rates.
-  Keep all numbers in `shared/layers.lua` / `shared/bore.lua`.
+- [ ] Technology icons; dig recipe icons per head and machine.
+- [ ] Locale review, factoriopedia entries, map colours.
+- [ ] Mod portal thumbnail and description.
 
-## 7. Graphics, locale, polish
+## 7. Tooling and testing
 
-- [ ] Core drill graphics are a static picture; make an animated drilling rig.
-- [ ] Icons for dig recipes per layer (currently the drill head icon).
-- [ ] Technology icons.
-- [ ] Locale for every layer name, status and tooltip; factoriopedia entries.
-- [ ] Map colors for bore and tunnel tiles.
-- [ ] Mod thumbnail and info.json description for the portal.
-
-## 8. Tooling and testing
-
-- [x] Headless test harness: `v1/tests/run.sh` creates a map with the
-  `tests/ttc-test` mod and runs it with `--benchmark`, printing PASS/FAIL.
-- [~] Automated checks: platform/tunnel survival, bore placement rules,
-  digging, belts and walls are covered. Still missing: blocking, unlocks,
-  belt-fed supplies, portal round-trip (needs a way to test without players).
-- [x] `deploy_local.sh` symlinks into the mods directory.
-- [ ] Lua language server annotations (`.luarc.json` with Factorio API
-  definitions) for editor support.
+- [x] Headless engine test (`v1/tests/run.sh`, 104 checks): tunnels and walls,
+  bore placement, digging, belts, wires, core drill shafts to floor 2, stairs,
+  transfers, crash site, technologies.
+- [x] `deploy_local.sh` links `src` into the mods folder.
+- [ ] Tests still missing: blocked bore, belt-fed supply, multiplayer forces.
+- [ ] Lua language server annotations (`.luarc.json`).

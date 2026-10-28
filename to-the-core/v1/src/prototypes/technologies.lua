@@ -1,24 +1,24 @@
 -- Progression technologies. None are researched with science: the runtime
 -- researches them when a shaft first reaches a floor (`reached_unlocks` in
--- shared/layers.lua) or a bore first digs up a resource (`unlocks`).
-local bore = require("shared.bore")
+-- shared/layers.lua) or a bore first digs up a resource (`unlocks`); a few
+-- use the game's own crafting triggers instead.
 
 local icons = "__to-the-core__/graphics/icons/"
 local technologies = {
   {
     name = "ttc-reach-floor-1",
     icon = icons .. "mk1-bore.png",
-    recipes = {"ttc-mk1-bore", "ttc-item-chute", "ttc-unfired-clay-drill-head", "ttc-clay-drill-head", "ttc-glass"}
+    recipes = {"ttc-mk1-bore", "ttc-unfired-clay-drill-head", "ttc-clay-drill-head", "ttc-glass"}
   },
   {
     name = "ttc-reach-floor-2",
     icon = icons .. "downpipe.png",
-    recipes = {"ttc-downpipe"}
+    recipes = {"ttc-downpipe", "ttc-item-chute", "ttc-grinder", "ttc-winnower"}
   },
   {
     name = "ttc-iron-discovery",
     icon = "__base__/graphics/icons/iron-ore.png",
-    recipes = {"ttc-iron-drill-head", "ttc-blade"}
+    recipes = {"ttc-iron-drill-head", "ttc-mk2-bore"}
   },
   {
     name = "ttc-reach-floor-3",
@@ -26,9 +26,28 @@ local technologies = {
     recipes = {}
   },
   {
-    name = "ttc-copper-discovery",
-    icon = "__base__/graphics/icons/copper-ore.png",
-    recipes = {"ttc-reinforced-drill-head"}
+    name = "ttc-reach-floor-4",
+    icon = icons .. "power-connector.png",
+    recipes = {"ttc-power-connector", "ttc-freight-lift"}
+  },
+  {
+    name = "ttc-reach-floor-5",
+    icon = icons .. "lift-pump.png",
+    recipes = {"ttc-lift-pump", "ttc-carbide-drill-head"}
+  },
+  {
+    name = "ttc-mk3-bore",
+    icon = icons .. "mk3-bore.png",
+    recipes = {"ttc-mk3-bore"},
+    -- Unlocked by the game's own trigger once enough steel has been made.
+    trigger = {type = "craft-item", item = "steel-plate", count = 200}
+  },
+  {
+    name = "ttc-reinforced-drill-head",
+    icon = icons .. "reinforced-drill-head.png",
+    recipes = {"ttc-reinforced-drill-head"},
+    -- Unlocked by the game's own trigger once a few steel plates are made.
+    trigger = {type = "craft-item", item = "steel-plate", count = 10}
   }
 }
 
@@ -44,26 +63,16 @@ for index, technology in ipairs(technologies) do
       icon = technology.icon,
       icon_size = 64,
       effects = effects,
-      unit = {
-        count = 1,
-        ingredients = {{"automation-science-pack", 1}},
-        time = 1
+      research_trigger = technology.trigger or {
+        type = "scripted",
+        trigger_description = {"ttc-trigger." .. technology.name},
+        icon = technology.icon,
+        icon_size = 64
       },
-      enabled = false,
       order = string.format("a-%02d", index)
     }
   })
 end
 
--- Dig recipes that come with a technology.
-for _, layer in ipairs(require("shared.layers")) do
-  for _, dig_recipe in ipairs(layer.dig_recipes) do
-    if dig_recipe.unlocked_by then
-      local technology = data.raw.technology[dig_recipe.unlocked_by]
-      table.insert(technology.effects, {
-        type = "unlock-recipe",
-        recipe = bore.recipe_name(layer, dig_recipe)
-      })
-    end
-  end
-end
+-- Hardened drill heads need plastic, so they come with it.
+table.insert(data.raw.technology["plastics"].effects, {type = "unlock-recipe", recipe = "ttc-hardened-drill-head"})

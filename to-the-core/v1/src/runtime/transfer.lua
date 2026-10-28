@@ -1,7 +1,7 @@
--- Item chutes and downpipes: one-way links to the floor below. Placing an
--- inlet creates its outlet directly below, which needs open ground there;
--- removing either end removes both. Every transfer tick items and fluid move
--- from the inlet to the outlet, never back.
+-- Item chutes, downpipes and power connectors: one-way links to the floor
+-- below. Placing an inlet creates its outlet directly below, which needs open
+-- ground there; removing either end removes both. Every transfer tick items,
+-- fluid or energy move from the inlet to the outlet, never back.
 local transfer_config = require("shared.transfer")
 local layers = require("runtime.layers")
 local tunnel = require("runtime.tunnel")
@@ -52,19 +52,32 @@ function transfer.on_built(entity, player)
     return
   end
 
-  local below = layers.below(entity.surface)
-  local lower = below and game.surfaces[below.surface_name]
-  if not lower then
-    return refund(entity, kind, player, "no-floor-below")
+  local target
+  if kind.up then
+    target = layers.above(entity.surface)
+  else
+    local below = layers.below(entity.surface)
+    target = below and game.surfaces[below.surface_name]
+  end
+  local side = kind.up and "above" or "below"
+  if not target then
+    return refund(entity, kind, player, "no-floor-" .. side)
   end
   local position = entity.position
-  if not tunnel.is_open(lower, position)
-    or not lower.can_place_entity({name = kind.outlet, position = position, force = entity.force}) then
-    return refund(entity, kind, player, "blocked-below")
+  -- On a floor the outlet needs dug-out ground; on the surface, just room.
+  if (layers.of_surface(target) and not tunnel.is_open(target, position))
+    or not target.can_place_entity({name = kind.outlet, position = position, force = entity.force}) then
+    return refund(entity, kind, player, "blocked-" .. side)
   end
 
-  local outlet = lower.create_entity({name = kind.outlet, position = position, force = entity.force})
-  links()[entity.unit_number] = {kind = kind.key, inlet = entity, outlet = outlet}
+  local outlet = target.create_entity({name = kind.outlet, position = position, force = entity.force})
+  local lower = target
+  local link = {kind = kind.key, inlet = entity, outlet = outlet}
+  if kind.sink then
+    link.sink = entity.surface.create_entity({name = kind.sink, position = position, force = entity.force})
+    link.source = lower.create_entity({name = kind.source, position = position, force = entity.force})
+  end
+  links()[entity.unit_number] = link
   outlets()[outlet.unit_number] = entity.unit_number
 end
 
@@ -79,6 +92,11 @@ function transfer.on_removed(entity, buffer)
   links()[inlet_number] = nil
   if link.outlet.valid then
     outlets()[link.outlet.unit_number] = nil
+  end
+  for _, hidden in ipairs({link.sink, link.source}) do
+    if hidden.valid then
+      hidden.destroy()
+    end
   end
 
   local other = entity == link.inlet and link.outlet or link.inlet
@@ -128,11 +146,21 @@ local function move_fluid(link, kind)
   end
 end
 
+local function move_energy(link)
+  local moved = math.min(link.sink.energy, link.source.electric_buffer_size - link.source.energy)
+  if moved > 0 then
+    link.sink.energy = link.sink.energy - moved
+    link.source.energy = link.source.energy + moved
+  end
+end
+
 function transfer.tick()
   for inlet_number, link in pairs(links()) do
     if not (link.inlet.valid and link.outlet.valid) then
       links()[inlet_number] = nil
-    elseif link.kind == "item_chute" then
+    elseif transfer_config.kinds[link.kind].sink then
+      move_energy(link)
+    elseif not transfer_config.kinds[link.kind].flow then
       move_items(link)
     else
       move_fluid(link, transfer_config.kinds[link.kind])

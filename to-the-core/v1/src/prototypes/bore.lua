@@ -1,19 +1,22 @@
 local bore = require("shared.bore")
-local layers = require("shared.layers")
 
 local graphics = "__to-the-core__/graphics/"
-local icon = graphics .. "icons/mk1-bore.png"
 
 -- Frames are 4x4 tiles centred on the 2x2 body, so the cutter head overlaps
 -- the wall the bore is digging into. Rendered by v1/tools/bore_gfx.py.
-local function direction_animation(direction)
-  local sheet = graphics .. "entities/mk1-bore-" .. direction
+local function direction_animation(sprite, direction, width)
+  local sheet = graphics .. "entities/" .. sprite .. "-bore-" .. direction
+  -- Frames are (width + 2) tiles across the bore and 4 along it.
+  local across, along = (width + 2) * 64, 256
+  local sideways = direction == "east" or direction == "west"
+  local frame_width = sideways and along or across
+  local frame_height = sideways and across or along
   return {
     layers = {
       {
         filename = sheet .. ".png",
-        width = 256,
-        height = 256,
+        width = frame_width,
+        height = frame_height,
         frame_count = 8,
         line_length = 8,
         animation_speed = 0.4,
@@ -21,8 +24,8 @@ local function direction_animation(direction)
       },
       {
         filename = sheet .. "-shadow.png",
-        width = 256,
-        height = 256,
+        width = frame_width,
+        height = frame_height,
         frame_count = 1,
         repeat_count = 8,
         scale = 0.5,
@@ -38,161 +41,188 @@ data:extend({
   {
     type = "recipe-category",
     name = bore.recipe_category
-  },
-  {
-    type = "assembling-machine",
-    name = bore.entity_name,
-    icon = icon,
-    icon_size = 64,
-    flags = {"placeable-neutral", "placeable-player", "player-creation"},
-    minable = {mining_time = 0.5, result = bore.entity_name},
-    max_health = 400,
-    corpse = "medium-remnants",
-    dying_explosion = "medium-explosion",
-    collision_box = {{-0.9, -0.9}, {0.9, 0.9}},
-    selection_box = {{-1, -1}, {1, 1}},
-    -- Like an offshore pump: the body stands on open ground and the tiles in
-    -- front (rotated with the bore) must be solid rock to dig into.
-    tile_buildability_rules = {
-      {
-        area = {{-0.9, -0.9}, {0.9, 0.9}},
-        required_tiles = {layers = {ground_tile = true}},
-        colliding_tiles = {layers = {out_of_map = true}},
-        remove_on_collision = true
-      },
-      {
-        area = {{-0.9, -1.9}, {0.9, -1.1}},
-        required_tiles = {layers = {out_of_map = true}},
-        colliding_tiles = {layers = {}}
-      }
-    },
-    crafting_categories = {bore.recipe_category},
-    crafting_speed = 1,
-    energy_usage = "150kW",
-    energy_source = {
-      type = "burner",
-      fuel_categories = {"chemical"},
-      effectivity = 1,
-      fuel_inventory_size = 1,
-      emissions_per_minute = {pollution = 6}
-    },
-    graphics_set = {
-      animation = {
-        north = direction_animation("north"),
-        east = direction_animation("east"),
-        south = direction_animation("south"),
-        west = direction_animation("west")
-      }
-    },
-    -- Lets the bore rotate: crafting machines without an active fluid box are
-    -- fixed to north, so it must stay on even when the recipe uses no fluids.
-    -- Later layers can feed coolant through it.
-    fluid_boxes = {
-      {
-        production_type = "input",
-        volume = 100,
-        pipe_connections = {
-          {flow_direction = "input", direction = defines.direction.west, position = {-0.5, 0.5}}
+  }
+})
+
+-- A furnace, so it has no recipe to pick: inserting a drill head selects that
+-- head's dig recipe, like ammo in a turret.
+local function bore_entity(name, tier)
+  local icon = graphics .. "icons/" .. tier.sprite .. "-bore.png"
+  -- Across the digging direction (2 or 3 tiles); 2 tiles along it.
+  local half = (tier.width or 2) / 2
+  data:extend({
+    {
+      type = "furnace",
+      name = name,
+      icon = icon,
+      icon_size = 64,
+      flags = {"placeable-neutral", "placeable-player", "player-creation"},
+      minable = {mining_time = 0.5, result = name},
+      max_health = 400,
+      corpse = "medium-remnants",
+      dying_explosion = "medium-explosion",
+      collision_box = {{-half + 0.1, -0.9}, {half - 0.1, 0.9}},
+      selection_box = {{-half, -1}, {half, 1}},
+      -- Like an offshore pump: the body stands on open ground and the tiles in
+      -- front (rotated with the bore) must be solid rock to dig into.
+      tile_buildability_rules = {
+        {
+          area = {{-half + 0.1, -0.9}, {half - 0.1, 0.9}},
+          required_tiles = {layers = {ground_tile = true}},
+          colliding_tiles = {layers = {out_of_map = true}},
+          remove_on_collision = true
+        },
+        {
+          area = {{-half + 0.1, -1.9}, {half - 0.1, -1.1}},
+          required_tiles = {layers = {out_of_map = true}},
+          colliding_tiles = {layers = {}}
         }
-      }
+      },
+      crafting_categories = {bore.recipe_category},
+      source_inventory_size = 1,
+      -- The floor's wall drops (runtime/bore.lua puts them here); set to the
+      -- number of possible drops below.
+      result_inventory_size = 1,
+      cant_insert_at_source_message_key = "ttc.bore-needs-drill-head",
+      crafting_speed = tier.speed,
+      energy_usage = tier.energy,
+      energy_source = {
+        type = "burner",
+        fuel_categories = {"chemical"},
+        effectivity = 1,
+        fuel_inventory_size = 1,
+        emissions_per_minute = {pollution = 6}
+      },
+      graphics_set = {
+        animation = {
+          north = direction_animation(tier.sprite, "north", tier.width or 2),
+          east = direction_animation(tier.sprite, "east", tier.width or 2),
+          south = direction_animation(tier.sprite, "south", tier.width or 2),
+          west = direction_animation(tier.sprite, "west", tier.width or 2)
+        }
+      },
+      -- Square crafting machines are only rotatable with a fluid box. Bores
+      -- that need coolant take water through the middle of their back, where
+      -- they lay their pipe; the others get one nothing can connect to.
+      fluid_boxes = {
+        tier.coolant and {
+          production_type = "input",
+          volume = 200,
+          filter = "water",
+          pipe_connections = {
+            {flow_direction = "input", direction = defines.direction.south, position = {0, 0.5}}
+          }
+        } or {production_type = "input", volume = 1, pipe_connections = {}}
+      },
+      -- Circuit connection on the rear-left corner, by the supply lane: the
+      -- wire follows a belt-laying bore along its belts (runtime/bore.lua).
+      circuit_wire_max_distance = default_circuit_wire_max_distance,
+      circuit_connector = circuit_connector_definitions.create_vector(universal_connector_template, {
+        {variation = 18, main_offset = util.by_pixel(-20, 20), shadow_offset = util.by_pixel(-16, 22), show_shadow = true},
+        {variation = 18, main_offset = util.by_pixel(-20, -20), shadow_offset = util.by_pixel(-16, -18), show_shadow = true},
+        {variation = 18, main_offset = util.by_pixel(20, -20), shadow_offset = util.by_pixel(24, -18), show_shadow = true},
+        {variation = 18, main_offset = util.by_pixel(20, 20), shadow_offset = util.by_pixel(24, 22), show_shadow = true}
+      }),
+      module_slots = 0,
+      allowed_effects = {},
+      working_sound = burner_drill and burner_drill.working_sound,
+      impact_category = tier.lays_belts and "metal" or "wood"
     },
-    return_ingredients_on_change = true,
-    module_slots = 0,
-    allowed_effects = {},
-    working_sound = burner_drill and burner_drill.working_sound,
-    impact_category = "metal"
-  },
-  {
-    type = "item",
-    name = bore.entity_name,
-    icon = icon,
-    icon_size = 64,
-    subgroup = "ttc-boring",
-    order = "b[bore]-a[mk1]",
-    place_result = bore.entity_name,
-    stack_size = 10
-  },
-  {
+    {
+      type = "item",
+      name = name,
+      icon = icon,
+      icon_size = 64,
+      subgroup = "ttc-boring",
+      order = "b[bore]-" .. tier.sprite,
+      place_result = name,
+      stack_size = 10
+    }
+  })
+end
+
+for name, tier in pairs(bore.tiers) do
+  bore_entity(name, tier)
+end
+
+local function recipe(name, ingredients)
+  local result = {
     type = "recipe",
-    name = bore.entity_name,
+    name = name,
     categories = {"crafting"},
     enabled = false,
     energy_required = 8,
-    -- No iron: the first bores are built from what the surface and the clay
-    -- layer give, so they can dig out the first iron.
-    ingredients = {
-      {type = "item", name = "wood", amount = 20},
-      {type = "item", name = "stone", amount = 20},
-      {type = "item", name = "ttc-clay", amount = 30},
-      {type = "item", name = "ttc-blade", amount = 8}
-    },
-    results = {
-      {type = "item", name = bore.entity_name, amount = 1}
-    }
+    ingredients = {},
+    results = {{type = "item", name = name, amount = 1}}
   }
-})
+  for _, ingredient in ipairs(ingredients) do
+    result.ingredients[#result.ingredients + 1] = {type = "item", name = ingredient[1], amount = ingredient[2]}
+  end
+  data:extend({result})
+end
+
+-- Mk1: timber and fired clay, no iron, so it can dig out the first iron.
+recipe("ttc-mk1-bore", {{"wood", 20}, {"stone-brick", 20}, {"ttc-glass", 10}})
+-- Mk2 lays its own supply and output belt lanes and digs twice as fast.
+recipe("ttc-mk2-bore", {{"iron-plate", 20}, {"iron-gear-wheel", 20}, {"stone-brick", 10}, {"ttc-glass", 10}})
+-- Mk3 digs five times as fast as a Mk1, cooled with water.
+recipe("ttc-mk3-bore", {{"ttc-mk2-bore", 1}, {"steel-plate", 50}, {"iron-gear-wheel", 40},
+  {"electronic-circuit", 20}, {"pipe", 20}})
 
 local function item_icons(name)
   local item = data.raw.item[name]
   return item.icons or {{icon = item.icon, icon_size = item.icon_size or 64}}
 end
 
--- One head's life of drops: a range around the expected amount, or a chance
--- of one item when less than one is expected.
-local function life_drops(layer, head)
-  local results = {}
-  for _, drop in ipairs(layer.drops) do
-    local expected = head.durability * drop.chance * (drop.minimum + drop.maximum) / 2
-    if expected >= 1 then
-      results[#results + 1] = {
-        type = "item",
-        name = drop.name,
-        amount_min = math.max(1, math.floor(expected * 0.75)),
-        amount_max = math.ceil(expected * 1.25)
-      }
-    else
-      results[#results + 1] = {
-        type = "item",
-        name = drop.name,
-        amount = 1,
-        independent_probability = expected
-      }
+-- Every item any floor's walls or veins can drop. Each dig recipe lists them as
+-- products the game never makes itself (amount 0) only so that the furnace's
+-- output slots accept them; the runtime puts the real drops there.
+local drop_items, drop_names = {}, {}
+local function add_drops(drops)
+  for _, drop in ipairs(drops) do
+    if not drop_items[drop.name] then
+      drop_items[drop.name] = true
+      drop_names[#drop_names + 1] = drop.name
     end
   end
-  return results
 end
-
-for _, head in pairs(bore.heads) do
-  data.raw.item[head.item].localised_description =
-    {"ttc.drill-head-description", tostring(head.durability), tostring(head.hit_time)}
-end
-
-for layer_index, layer in ipairs(layers) do
-  for recipe_index, dig_recipe in ipairs(layer.dig_recipes) do
-    local head = bore.heads[dig_recipe.head]
-    data:extend({
-      {
-        type = "recipe",
-        name = bore.recipe_name(layer, dig_recipe),
-        localised_name = {"ttc.dig-recipe-name", {"ttc-layer-name." .. layer.name}, {"item-name." .. head.item}},
-        localised_description = {
-          "ttc.dig-recipe-description",
-          tostring(head.durability),
-          tostring(layer.hits_per_tile),
-          string.format("%.2g", head.durability / layer.hits_per_tile)
-        },
-        icons = item_icons(head.item),
-        subgroup = "ttc-boring",
-        order = string.format("c[dig]-%02d-%02d", layer_index, recipe_index),
-        categories = {bore.recipe_category},
-        enabled = dig_recipe.unlocked_by == nil,
-        hide_from_player_crafting = true,
-        allow_decomposition = false,
-        allow_productivity = false,
-        energy_required = head.durability * head.hit_time,
-        ingredients = {{type = "item", name = head.item, amount = 1}},
-        results = life_drops(layer, head)
-      }
-    })
+for _, layer in ipairs(require("shared.layers")) do
+  add_drops(layer.drops)
+  for _, vein in ipairs(layer.veins or {}) do
+    add_drops(vein.drops)
   end
+end
+local output_slots = {}
+for _, name in ipairs(drop_names) do
+  output_slots[#output_slots + 1] = {type = "item", name = name, amount = 0}
+end
+for name in pairs(bore.tiers) do
+  data.raw.furnace[name].result_inventory_size = #drop_names
+end
+
+for head_name, head in pairs(bore.heads) do
+  data.raw.item[head.item].localised_description =
+    {"ttc.drill-head-description", tostring(head.durability), string.format("%.2g", 1 / head.hit_time)}
+
+  -- One craft is one head's life. The drops depend on the floor and are paid
+  -- out by the runtime.
+  data:extend({
+    {
+      type = "recipe",
+      name = bore.recipe_name(head_name),
+      localised_name = {"ttc.dig-recipe-name", {"item-name." .. head.item}},
+      localised_description = {"ttc.dig-recipe-description", tostring(head.durability)},
+      icons = item_icons(head.item),
+      subgroup = "ttc-boring",
+      order = "c[dig]-" .. head.durability,
+      categories = {bore.recipe_category},
+      enabled = true,
+      hide_from_player_crafting = true,
+      allow_decomposition = false,
+      allow_productivity = false,
+      energy_required = head.durability * head.hit_time,
+      ingredients = {{type = "item", name = head.item, amount = 1}},
+      results = output_slots
+    }
+  })
 end
