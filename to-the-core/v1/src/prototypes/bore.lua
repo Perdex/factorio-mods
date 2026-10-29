@@ -97,13 +97,13 @@ local function bore_entity(name, tier)
         }
       },
       -- Square crafting machines are only rotatable with a fluid box. Bores
-      -- that need coolant take water through the middle of their back, where
+      -- that need coolant take it in through the middle of their back, where
       -- they lay their pipe; the others get one nothing can connect to.
       fluid_boxes = {
         tier.coolant and {
           production_type = "input",
           volume = 200,
-          filter = "water",
+          filter = bore.coolant_fluid,
           pipe_connections = {
             {flow_direction = "input", direction = defines.direction.south, position = {0, 0.5}}
           }
@@ -160,7 +160,7 @@ end
 recipe("ttc-mk1-bore", {{"wood", 20}, {"stone-brick", 20}, {"ttc-glass", 10}})
 -- Mk2 lays its own supply and output belt lanes and digs twice as fast.
 recipe("ttc-mk2-bore", {{"iron-plate", 20}, {"iron-gear-wheel", 20}, {"stone-brick", 10}, {"ttc-glass", 10}})
--- Mk3 digs five times as fast as a Mk1, cooled with water.
+-- Mk3 digs five times as fast as a Mk1, cooled with bore coolant.
 recipe("ttc-mk3-bore", {{"ttc-mk2-bore", 1}, {"steel-plate", 50}, {"iron-gear-wheel", 40},
   {"electronic-circuit", 20}, {"pipe", 20}})
 
@@ -196,8 +196,9 @@ for name in pairs(bore.tiers) do
 end
 
 for head_name, head in pairs(bore.heads) do
-  data.raw.item[head.item].localised_description =
-    {"ttc.drill-head-description", tostring(head.durability), string.format("%.2g", 1 / head.hit_time)}
+  local stats = {"ttc.drill-head-description", tostring(head.durability), string.format("%.2g", 1 / head.hit_time)}
+  data.raw.item[head.item].localised_description = head.own_description
+    and {"", stats, "\n", {"item-description." .. head.item}} or stats
 
   -- One craft is one head's life. The drops depend on the floor and are paid
   -- out by the runtime.
@@ -240,3 +241,52 @@ signals.sprites = util.empty_sprite()
 signals.activity_led_sprites = util.empty_sprite()
 signals.draw_circuit_wires = false
 data:extend({signals})
+
+-- Bore coolant for the Mk3: water with a little petroleum gas or lubricant,
+-- and dust, mixed in a chemical plant. The petroleum recipe comes with oil
+-- processing, together with the Mk3; the cheaper lubricant one later
+-- (prototypes/technologies.lua).
+local water = data.raw.fluid["water"]
+local coolant_icon = {icon = water.icon, icon_size = water.icon_size or 64, tint = {r = 0.55, g = 1, b = 0.85}}
+
+local function coolant_recipe(name, additive, amount)
+  local additive_fluid = data.raw.fluid[additive]
+  return {
+    type = "recipe",
+    name = name,
+    categories = {"chemistry"},
+    enabled = false,
+    energy_required = 2,
+    ingredients = {
+      {type = "fluid", name = "water", amount = 100},
+      {type = "fluid", name = additive, amount = amount},
+      {type = "item", name = "ttc-dust", amount = 2}
+    },
+    results = {{type = "fluid", name = bore.coolant_fluid, amount = 100}},
+    icons = {
+      coolant_icon,
+      {icon = additive_fluid.icon, icon_size = additive_fluid.icon_size or 64, scale = 0.25, shift = {-8, -8}}
+    },
+    subgroup = "fluid-recipes",
+    order = "z[ttc-coolant]-" .. name,
+    crafting_machine_tint = {
+      primary = {r = 0.2, g = 0.75, b = 0.65},
+      secondary = {r = 0.6, g = 1, b = 0.9}
+    }
+  }
+end
+
+data:extend({
+  {
+    type = "fluid",
+    name = bore.coolant_fluid,
+    icons = {coolant_icon},
+    base_color = {r = 0.2, g = 0.75, b = 0.65},
+    flow_color = {r = 0.6, g = 1, b = 0.9},
+    default_temperature = 15,
+    subgroup = "fluid",
+    order = "z[ttc-coolant]"
+  },
+  coolant_recipe("ttc-coolant-from-petroleum", "petroleum-gas", 20),
+  coolant_recipe("ttc-coolant-from-lubricant", "lubricant", 4)
+})

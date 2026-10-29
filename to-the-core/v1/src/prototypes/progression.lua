@@ -50,6 +50,13 @@ for name, technology in pairs(data.raw.technology) do
       technology.research_trigger = {type = "craft-fluid", fluid = trigger.craft_fluid, amount = trigger.amount}
     elseif trigger.build then
       technology.research_trigger = {type = "build-entity", entity = trigger.build}
+    elseif trigger.discover then
+      technology.research_trigger = {
+        type = "scripted",
+        trigger_description = {"ttc-trigger.discover", "[item=" .. trigger.discover .. "]"},
+        icon = data.raw.item[trigger.discover].icon,
+        icon_size = 64
+      }
     end
   end
 end

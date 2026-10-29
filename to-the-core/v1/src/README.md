@@ -47,7 +47,7 @@ and drill heads.
    lane of the supply belt and heads and fuel on the other.
 6. The rock hides veins, shown by ore on the exposed rock face: twenty
    times harder to dig, but they yield their resource in bulk (on floor 1
-   just stone, an obstacle to dig around).
+   stone, an obstacle to dig around, and softer clay).
 7. If anything stands in the tiles ahead, the bore pauses without consuming
    anything and shows "Tunnel ahead is blocked".
 8. Underground belts and pipes-to-ground really go underground: each comes
@@ -68,7 +68,7 @@ into `~/.factorio/mods`, and `../tests/run.sh` for the headless engine test.
 ## Current scope
 
 Five floors: clay; stone with iron; copper and coal; sulfur and oil; and hot
-rock that only the water-cooled Mk3 bore can dig. Three bore tiers and six
+rock that only the coolant-cooled Mk3 bore can dig. Three bore tiers and six
 kinds of drill head. Red, green, military and blue technologies unlock by
 reaching floors and by crafting milestones; there is no science and no lab.
 Underground belts and pipes go through the floor below. A game

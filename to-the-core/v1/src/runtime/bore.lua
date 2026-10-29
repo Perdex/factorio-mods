@@ -9,12 +9,15 @@
 -- hidden loaders that connect those lanes to the bore.
 local layers = require("shared.layers")
 local bore_config = require("shared.bore")
+local progression_config = require("shared.progression")
 local research = require("runtime.research")
 local tunnel = require("runtime.tunnel")
 local veins = require("runtime.veins")
 local wear = require("runtime.wear")
 
 local loader_name = "loader-1x1"
+-- bore.tick runs every this many ticks (runtime/init.lua).
+local update_ticks = 10
 
 local layers_by_surface = {}
 for _, layer in ipairs(layers) do
@@ -408,11 +411,21 @@ local function hit_effect(entity)
   end
 end
 
+-- Base technologies researched on the first find of an item, on any floor.
+local discoveries = {}
+for technology, trigger in pairs(progression_config.triggers) do
+  if trigger.discover then
+    discoveries[#discoveries + 1] = {item = trigger.discover, technology = technology}
+  end
+end
+
 local function unlock_discoveries(entity, layer)
   local statistics = entity.force.get_item_production_statistics(entity.surface)
-  for _, unlock in ipairs(layer.unlocks or {}) do
-    if statistics.get_input_count(unlock.item) > 0 then
-      research.unlock(entity.force, unlock.technology)
+  for _, list in ipairs({layer.unlocks or {}, discoveries}) do
+    for _, unlock in ipairs(list) do
+      if statistics.get_input_count(unlock.item) > 0 then
+        research.unlock(entity.force, unlock.technology)
+      end
     end
   end
 end
@@ -465,7 +478,7 @@ local function advance(state, layer)
 
   -- Without belts (no iron yet) the tunnel is left bare.
   -- Coolant bores lay a pipe right behind their inlet (no loader sits there),
-  -- so the water line follows.
+  -- so the coolant line follows.
   if state.lays_pipes and state.pipe_stock >= 1 then
     local _, _, pipe_position = rear_tiles(entity)
     lay_belt(entity, pipe_position, defines.direction.north, bore_config.pipe_item)
@@ -708,17 +721,19 @@ local function update(state)
     return
   end
 
-  -- Coolant-cooled bores stop without water.
-  local water = state.coolant and entity.get_fluid(1)
-  if state.coolant and (not water or water.amount < state.coolant) then
+  -- Coolant-cooled bores stop without coolant: they use it at a fixed rate
+  -- while digging, whatever the head.
+  local per_update = state.coolant and bore_config.tiers[entity.name].coolant * update_ticks / 60
+  local coolant = per_update and entity.get_fluid(1)
+  if per_update and (not coolant or coolant.amount < per_update) then
     set_status(state, "needs-coolant")
     return
   end
 
   -- Each hit on the wall brings out some of the floor's rock.
   local dealt, whole = wear.update(state, entity, bore_config.recipe_heads)
-  if water and whole > 0 then
-    entity.remove_fluid(1, math.min(water.amount, whole * state.coolant))
+  if coolant and dealt > 0 then
+    entity.remove_fluid(1, per_update)
   end
   state.hits = state.hits + dealt
   if whole > 0 then

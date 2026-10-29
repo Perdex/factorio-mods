@@ -43,13 +43,6 @@ local technologies = {
     recipes = {"ttc-carbide-drill-head"}
   },
   {
-    name = "ttc-mk3-bore",
-    icon = icons .. "mk3-bore.png",
-    recipes = {"ttc-mk3-bore"},
-    -- Unlocked by the game's own trigger once enough steel has been made.
-    trigger = {type = "craft-item", item = "steel-plate", count = 200}
-  },
-  {
     name = "ttc-reinforced-drill-head",
     icon = icons .. "reinforced-drill-head.png",
     recipes = {"ttc-reinforced-drill-head"},
@@ -79,6 +72,17 @@ for index, technology in ipairs(technologies) do
       order = string.format("a-%02d", index)
     }
   })
+end
+
+-- The Mk3 bore needs bore coolant: first made with petroleum gas, so it comes
+-- with oil processing; lubricant makes it cheaper later.
+for technology, recipes in pairs({
+  ["oil-processing"] = {"ttc-mk3-bore", "ttc-coolant-from-petroleum"},
+  ["lubricant"] = {"ttc-coolant-from-lubricant"}
+}) do
+  for _, recipe in ipairs(recipes) do
+    table.insert(data.raw.technology[technology].effects, {type = "unlock-recipe", recipe = recipe})
+  end
 end
 
 -- Hardened drill heads need plastic, so they come with it.

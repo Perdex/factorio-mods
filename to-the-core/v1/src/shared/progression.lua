@@ -7,6 +7,8 @@
 --   {craft = item, count = n}  the game's own craft-item trigger
 --   {craft_fluid = fluid, amount = n}  the game's own craft-fluid trigger
 --   {build = entity}           the game's own build-entity trigger
+--   {discover = item}          researched when a tunnel bore first digs the
+--                              item up (`unlocks` in shared/layers.lua)
 -- removed: technologies taken out of the tree (science packs, research speed).
 --
 -- Red, green, military and chemical (blue) science technologies are mapped;
@@ -25,6 +27,8 @@ return {
     "research-speed-2",
     "research-speed-3",
     "research-speed-4",
+    "research-speed-5",
+    "research-speed-6",
     -- Uranium comes from digging, not from mining with fluid.
     "uranium-mining",
     -- Ore comes from digging, not mining drills.
@@ -47,12 +51,8 @@ return {
   triggers = {
     -- Floor 2: iron. (Steam power and electronics keep their base triggers:
     -- 50 iron plates and 10 copper plates.)
-    ["automation"] = {craft = "iron-plate", count = 100},
-    ["logistics"] = {craft = "transport-belt", count = 100},
-    ["military"] = {floor = 2},
-    ["gun-turret"] = {craft = "firearm-magazine", count = 50},
-    ["physical-projectile-damage-1"] = {craft = "firearm-magazine", count = 200},
-    ["weapon-shooting-speed-1"] = {craft = "firearm-magazine", count = 200},
+    ["automation"] = {craft = "iron-plate", count = 50},
+    ["logistics"] = {craft = "transport-belt", count = 10},
     ["stone-wall"] = {craft = "stone-brick", count = 100},
     ["gate"] = {craft = "stone-wall", count = 100},
 
@@ -60,9 +60,8 @@ return {
     ["radar"] = {floor = 3},
     ["logistics-2"] = {floor = 3},
     ["toolbelt"] = {floor = 3},
-    ["landfill"] = {floor = 3},
-    ["physical-projectile-damage-2"] = {floor = 3},
-    ["weapon-shooting-speed-2"] = {floor = 3},
+    -- No floor 9 yet: landfill stays out of reach for now.
+    ["landfill"] = {floor = 9},
     ["repair-pack"] = {craft = "electronic-circuit", count = 50},
     ["lamp"] = {craft = "ttc-glass", count = 50},
     ["fast-inserter"] = {craft = "electronic-circuit", count = 100},
@@ -70,6 +69,13 @@ return {
 
     -- Floor 4: steel, sulfur and oil; the green tier completes.
     ["steel-processing"] = {floor = 4},
+    -- The first military technologies: enemies are to come from floor 4.
+    ["military"] = {floor = 4},
+    ["gun-turret"] = {floor = 4},
+    ["physical-projectile-damage-1"] = {floor = 4},
+    ["weapon-shooting-speed-1"] = {floor = 4},
+    ["physical-projectile-damage-2"] = {craft = "firearm-magazine", count = 200},
+    ["weapon-shooting-speed-2"] = {craft = "firearm-magazine", count = 200},
     ["heavy-armor"] = {craft = "steel-plate", count = 20},
     ["automation-2"] = {craft = "steel-plate", count = 50},
     ["electric-energy-distribution-1"] = {craft = "steel-plate", count = 50},
@@ -149,7 +155,7 @@ return {
     ["speed-module-2"] = {craft = "processing-unit", count = 100},
     ["rocket-fuel"] = {craft = "solid-fuel", count = 100},
     ["nuclear-power"] = {craft = "uranium-235", count = 1},
-    ["uranium-processing"] = {floor = 5},
+    ["uranium-processing"] = {discover = "uranium-ore"},
     ["advanced-material-processing-2"] = {floor = 5},
     ["electric-energy-distribution-2"] = {floor = 5},
     ["inserter-capacity-bonus-3"] = {floor = 5},

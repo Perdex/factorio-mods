@@ -74,6 +74,11 @@ end
 
 script.on_event(defines.events.on_tick, function(event)
   local tick = event.tick
+  -- Keep the first Mk3 cooled while it digs; from tick 589 on its use is
+  -- measured.
+  if C and C.valid and tick > 300 and tick < 590 then
+    C.set_fluid(1, {name = "ttc-coolant", amount = 200})
+  end
   if T and T.valid and T.get_signal({type = "virtual", name = "signal-check"},
     defines.wire_connector_id.circuit_red) > 0 then
     pulses = pulses + 1
@@ -111,6 +116,10 @@ script.on_event(defines.events.on_tick, function(event)
     -- Whatever is built where the pit and its stairs open up gets destroyed.
     obstacle = game.surfaces.nauvis.create_entity({name = "wooden-chest", position = {drill_position.x - 3, drill_position.y}, force = "player"})
 
+    local unfired = prototypes.recipe["ttc-dig-unfired_clay"]
+    check("an unfired clay head digs once, at one hit a second", unfired and game.forces.player.recipes["ttc-dig-unfired_clay"].enabled
+      and unfired.ingredients[1].name == "ttc-unfired-clay-drill-head" and unfired.energy == 1
+      and prototypes.recipe["ttc-shaft-unfired_clay"] ~= nil, unfired and unfired.energy)
     check("a bore takes any drill head from the start", game.forces.player.recipes["ttc-dig-clay"].enabled
       and game.forces.player.recipes["ttc-dig-reinforced"].enabled)
     check("iron drill heads are not craftable before iron is found",
@@ -171,7 +180,7 @@ script.on_event(defines.events.on_tick, function(event)
     if tick == 300 then
       check("Mk3 waits for coolant", C.custom_status and C.custom_status.label[1] == "ttc-status.needs-coolant",
         C.custom_status and serpent.line(C.custom_status.label))
-      C.set_fluid(1, {name = "water", amount = 200})
+      C.set_fluid(1, {name = "ttc-coolant", amount = 200})
       -- Pipes on its supply lane: it lays one behind its inlet per tile.
       for _, loader in pairs(S.find_entities_filtered({name = "loader-1x1", area = {{-4.5, -1.5}, {-2.5, 2.5}}})) do
         if loader.loader_type == "input" then
@@ -182,9 +191,11 @@ script.on_event(defines.events.on_tick, function(event)
       end
     end
     if tick == 600 then
-      local water = C.get_fluid(1)
-      check("Mk3 digs with water and uses it", C.custom_status and C.custom_status.label[1] == "ttc-status.digging"
-        and water and water.amount < 200, water and water.amount)
+      -- One or two bore updates (every 10 ticks) since the last top-up, at
+      -- 100 a second: 16.7 each.
+      local coolant = C.get_fluid(1)
+      check("Mk3 digs using 100 coolant a second", C.custom_status and C.custom_status.label[1] == "ttc-status.digging"
+        and coolant and coolant.amount > 200 - 33.4 and coolant.amount < 200 - 16.6, coolant and coolant.amount)
       check("Mk3 lays a pipe behind its inlet as it advances",
         #S.find_entities_filtered({name = "pipe", area = {{-6, 0}, {0, 1}}}) >= 1,
         #S.find_entities_filtered({name = "pipe", area = {{-6, 0}, {0, 1}}}))
@@ -193,8 +204,32 @@ script.on_event(defines.events.on_tick, function(event)
         connected = connected or neighbour.name == "pipe"
       end
       check("the laid pipe feeds the Mk3's inlet", connected)
-      check("Mk3 unlocks once enough steel is made",
-        prototypes.technology["ttc-mk3-bore"].research_trigger.type == "craft-item")
+      local function unlocked_by(technology)
+        local recipes = {}
+        for _, effect in ipairs(prototypes.technology[technology].effects) do
+          recipes[effect.recipe or ""] = true
+        end
+        return recipes
+      end
+      local function inputs(name)
+        local recipe = prototypes.recipe[name]
+        local found = {}
+        for _, ingredient in ipairs(recipe.ingredients) do
+          found[ingredient.name] = ingredient.amount
+        end
+        return found, recipe.categories[1] == "chemistry" and recipe.products[1].name == "ttc-coolant"
+          and recipe.products[1].amount == 100
+      end
+      local oil = unlocked_by("oil-processing")
+      check("the Mk3 and petroleum coolant come with oil processing", oil["ttc-mk3-bore"]
+        and oil["ttc-coolant-from-petroleum"] and unlocked_by("lubricant")["ttc-coolant-from-lubricant"]
+        and prototypes.technology["ttc-mk3-bore"] == nil)
+      local petroleum, petroleum_ok = inputs("ttc-coolant-from-petroleum")
+      local lubricant, lubricant_ok = inputs("ttc-coolant-from-lubricant")
+      check("coolant is water with a little petroleum gas or lubricant, and dust", petroleum_ok and lubricant_ok
+        and petroleum.water == 100 and petroleum["petroleum-gas"] == 20 and petroleum["ttc-dust"] == 2
+        and lubricant.water == 100 and lubricant.lubricant == 4 and lubricant["ttc-dust"] == 2,
+        serpent.line({petroleum, lubricant}))
       local reinforced_trigger = prototypes.technology["ttc-reinforced-drill-head"].research_trigger
       check("reinforced heads unlock after a few steel plates",
         reinforced_trigger.type == "craft-item" and reinforced_trigger.item.name == "steel-plate"
@@ -414,8 +449,20 @@ script.on_event(defines.events.on_tick, function(event)
     check("science pack technologies removed", prototypes.technology["logistic-science-pack"].hidden
       and prototypes.technology["automation-science-pack"].hidden)
     check("lab removed", prototypes.item["lab"].hidden and not game.forces.player.recipes["lab"].enabled)
-    check("100 smelted iron plates unlock automation", game.forces.player.technologies["automation"].researched)
-    check("floor 2 technologies wait for floor 2", not game.forces.player.technologies["military"].researched)
+    local function trigger(name)
+      return prototypes.technology[name].research_trigger
+    end
+    check("50 smelted iron plates unlock automation", game.forces.player.technologies["automation"].researched
+      and trigger("automation").count == 50)
+    check("10 belts unlock logistics", trigger("logistics").type == "craft-item" and trigger("logistics").count == 10)
+    check("military waits for floor 4", trigger("military").type == "scripted" and trigger("gun-turret").type == "scripted"
+      and not game.forces.player.technologies["military"].researched)
+    check("landfill waits for floor 9", serpent.line(trigger("landfill").trigger_description):find('"9"') ~= nil,
+      serpent.line(trigger("landfill").trigger_description))
+    check("uranium processing waits for the first uranium dug up", trigger("uranium-processing").type == "scripted"
+      and trigger("uranium-processing").trigger_description[1] == "ttc-trigger.discover")
+    check("no lab speed upgrades left", prototypes.technology["research-speed-5"].hidden
+      and prototypes.technology["research-speed-6"].hidden)
     local wooden = prototypes.recipe["ttc-wooden-drill-head"].ingredients
     check("wooden drill heads are wood and stone", #wooden == 2)
     local function uses(recipe, item)
@@ -522,6 +569,13 @@ script.on_event(defines.events.on_tick, function(event)
       end
     end
     check("floor 1 has stone veins", vein_tile ~= nil)
+    local clay = nil
+    for x = 200, 400, 2 do
+      for y = -40, 40, 2 do
+        clay = clay or remote.call("to-the-core", "vein_at", S.index, {x = x, y = y}) == "ttc-clay" and {x, y} or nil
+      end
+    end
+    check("floor 1 has clay veins", clay ~= nil and prototypes.entity["ttc-vein-ttc-clay"] ~= nil)
     if vein_tile then
       local body = {}
       for dx = -2, -1 do
@@ -578,7 +632,7 @@ script.on_event(defines.events.on_tick, function(event)
     hot_mk3 = hot.create_entity({name = "ttc-mk3-bore", position = {-5, -0.5}, direction = defines.direction.west, force = "player", raise_built = true})
     hot_mk3.insert({name = "ttc-carbide-drill-head", count = 1})
     hot_mk3.insert({name = "coal", count = 10})
-    hot_mk3.set_fluid(1, {name = "water", amount = 200})
+    hot_mk3.set_fluid(1, {name = "ttc-coolant", amount = 200})
     -- Floor 4: break into an oil pocket.
     local deep = game.create_surface("ttc-floor-4", {width = 1, height = 1})
     for x = -200, 200 do
@@ -605,13 +659,13 @@ script.on_event(defines.events.on_tick, function(event)
         force = "player", raise_built = true})
       oil_bore.insert({name = "ttc-carbide-drill-head", count = 2})
       oil_bore.insert({name = "coal", count = 50})
-      oil_bore.set_fluid(1, {name = "water", amount = 200})
+      oil_bore.set_fluid(1, {name = "ttc-coolant", amount = 200})
     end
   elseif tick > 10101 and tick < 11000 and tick % 10 == 0 then
-    -- Keep the Mk3s cooled: with carbide heads they use ~400 water a second.
+    -- Keep the Mk3s cooled: with carbide heads they use ~400 coolant a second.
     for _, cooled in ipairs({oil_bore, hot_mk3}) do
       if cooled and cooled.valid then
-        cooled.set_fluid(1, {name = "water", amount = 200})
+        cooled.set_fluid(1, {name = "ttc-coolant", amount = 200})
         cooled.get_output_inventory().clear()
       end
     end
@@ -632,7 +686,8 @@ script.on_event(defines.events.on_tick, function(event)
     check("a turn signal turns the bore as it moves", T and T.direction == defines.direction.south
       and T.position.x == 62, T and {T.direction, T.position})
     local remaining = T and T.get_signal({type = "virtual", name = "signal-H"}, defines.wire_connector_id.circuit_red)
-    check("the bore outputs the hits remaining", remaining and remaining > 0 and remaining <= 40, remaining)
+    -- 40 hits a tile on floor 1, 20 times that if the map put a vein there.
+    check("the bore outputs the hits remaining", remaining and remaining > 0 and remaining <= 800, remaining)
     check("the bore pulses for one tick when it moves", pulses == 1, pulses)
     local plain = vein_tile and {x = vein_tile.x, y = vein_tile.y + 1}
     check("plain rock beside a vein breaks first", plain and not tunnel.is_void(S, plain)
@@ -675,7 +730,11 @@ script.on_event(defines.events.on_tick, function(event)
     local floor_2 = game.surfaces["ttc-floor-2"]
     check("core drill reaches floor 2", floor_2 ~= nil and floor_2.find_entity("ttc-core-drill", drill_position) ~= nil)
     check("reaching floor 2 researches its technologies", game.forces.player.technologies["ttc-reach-floor-2"].researched
-      and game.forces.player.technologies["military"].researched)
+      and not game.forces.player.technologies["military"].researched)
+    local hot = game.surfaces["ttc-floor-5"]
+    local uranium = hot and game.forces.player.get_item_production_statistics(hot).get_input_count("uranium-ore") or 0
+    check("digging up uranium researches uranium processing", uranium > 0
+      and game.forces.player.technologies["uranium-processing"].researched, uranium)
     check("floor 3 technologies still wait", not game.forces.player.technologies["radar"].researched)
 
     -- Floor 1 now has shaft 1's landing (stairs north/south, up to the

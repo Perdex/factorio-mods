@@ -61,13 +61,13 @@ stored. The sand on the way is welcome: it makes glass.
 ## Ore veins
 
 Each floor hides veins in its rock (`veins` in `shared/layers.lua`): patches
-twenty times harder to dig, which yield their resource instead of the floor's
-usual drops. They show as ore on the rock face once a tunnel exposes them, so
+twenty times harder to dig (clay only five), which yield their resource
+instead of the floor's usual drops. They show as ore on the rock face once a tunnel exposes them, so
 they can be dug around — or into, when the resource is worth it.
 
 | Floor | Veins |
 |---|---|
-| 1 | stone (an obstacle: ~1200 stone a tile, nothing else) |
+| 1 | stone (an obstacle: ~1200 stone a tile, nothing else); clay (~300 clay a tile) |
 | 2 | stone; iron (~1600 iron ore a tile) |
 | 3 | copper, coal, iron |
 | 4 | sulfur, coal; oil pockets (soft; the first tile dug leaves a crude oil well) |
@@ -81,6 +81,7 @@ one before and lasts longer, so better heads keep up with harder rock.
 | Head | Lasts | Hits/s | Made from | Unlocked |
 |---|---|---|---|---|
 | Wooden | 10 hits | 0.33 | 2 wood, 1 stone | start |
+| Unfired clay | 1 | 1 | 5 clay, shaped | floor 1 |
 | Clay | 20 | 1 | 5 clay, shaped, then fired | floor 1 |
 | Iron | 80 | 3 | 4 iron plates | iron discovery (floor 2) |
 | Reinforced | 500 | 9 | 3 steel, 2 copper | 10 steel plates crafted (floor 4) |
@@ -93,7 +94,7 @@ one before and lasts longer, so better heads keep up with harder rock.
 |---|---|---|---|---|
 | Mk1 | 1 | no | wood, clay bricks, glass | floor 1 |
 | Mk2 | 2 | yes | 20 iron, 20 gears, bricks, glass | iron discovery |
-| Mk3 | 5 | yes, and pipes; 3 wide, water inlet at the back (1 per hit) | Mk2, 50 steel, gears, circuits, pipes | 200 steel crafted |
+| Mk3 | 5 | yes, and pipes; 3 wide, coolant inlet at the back (100 a second) | Mk2, 50 steel, gears, circuits, pipes | oil processing |
 
 Veins are meant to be long projects, like base-game ore patches: an iron
 vein tile on floor 2 is 3200 hits (~9 min for a Mk2 with iron heads), a
@@ -130,7 +131,8 @@ vein is tens of tiles, best dug from all sides at once.
 - **Walls give per tile:** ~40 stone, ~8 iron ore, ~3 coal. A tile takes two
   iron heads (8 plates), so iron digging just about keeps itself going.
 - **Discovery — iron ore:** iron drill heads and the tunnel bore Mk2, which
-  lays its own belt lanes. Red tier (automation, logistics, basic military).
+  lays its own belt lanes. Red tier (automation, logistics); military waits
+  for floor 4.
 - **Shaft to floor 3:** 10 000 hits through solid stone — about 15 minutes
   of digging with iron heads, ~2 000 stone. The rock is the real limit: the
   drill stops whenever its stone isn't cleared away.
@@ -154,8 +156,13 @@ vein is tens of tiles, best dug from all sides at once.
   copper ore. Veins of sulfur and coal; **oil pockets** leave a crude oil
   well for a pumpjack when a tunnel breaks into them.
 - **Arrival unlocks:** steel, power connectors, oil gathering,
-  plastics, sulfur processing; the military tier.
-- **Heads:** hardened (with plastics); 200 steel plates unlock the Mk3 bore.
+  plastics, sulfur processing; the military tier, from the first turrets
+  on (enemies are meant to start here).
+- **Heads:** hardened (with plastics). Oil processing brings the Mk3 bore and
+  its coolant: 100 water, 20 petroleum gas and 2 dust make 100 bore coolant
+  in a chemical plant; with lubricant, 4 lubricant replace the petroleum. A
+  Mk3 uses 100 a second while digging, so the oil industry and the rock
+  disposal both feed it.
 - **Shaft to floor 5:** 100 000 hits — about 15 minutes with hardened heads,
   ~5 000 stone.
 
@@ -179,23 +186,26 @@ Examples:
 
 | Trigger | Unlocks |
 |---|---|
-| Craft 50 / 100 iron plates (floor 2) | steam power / automation |
-| Craft 100 belts, 100 bricks, magazines | logistics, stone walls, turrets |
-| Reach floor 2 | military |
+| Craft 50 iron plates (floor 2) | steam power, automation |
+| Craft 10 belts, 100 bricks | logistics, stone walls |
 | Craft 10 copper plates (floor 3) | electronics |
 | Reach floor 3 | radar, logistics 2, toolbelt |
 | Craft circuits (50/100/200) or glass (50) | repair packs, fast inserters, circuit network, lamps |
 | Reach floor 4 | steel, oil gathering, plastics, sulfur |
 | Craft steel / engines / plastic | automation 2, engines, railways, advanced circuits |
-| Reach floor 4 | flamethrower, energy shields |
+| Reach floor 4 | military, gun turrets, damage and shooting speed 1, flamethrower, energy shields |
+| Craft 200 magazines (floor 4) | damage and shooting speed 2 |
 | Craft piercing rounds / grenades / explosives | defender, damage upgrades, rocketry, land mines |
 | Craft plastic, heavy oil, lubricant, robot frames | advanced oil, lubricant, electric engines, robotics |
 | Craft processing units / batteries | level-2 modules, lasers |
-| Reach floor 5 | batteries, modules, uranium, power armour, laser weapons, tank |
+| Reach floor 5 | batteries, modules, power armour, laser weapons, tank |
+| Dig up uranium ore (floor 5) | uranium processing |
+| Reach floor 9 (none yet) | landfill |
 
 Production, utility and space science technologies keep their costs and are
 out of reach until deeper floors exist.
 
 ## Open questions
 
-- **Enemies:** surface only, or underground creatures from floor 3 on?
+- **Enemies:** from floor 4 on (the military tier unlocks there); surface
+  too, or only underground?

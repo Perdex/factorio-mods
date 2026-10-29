@@ -18,7 +18,8 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 2. **Getting rid of rock** — grinders (3:2 per step, 3x slower per step,
    from floor 2) and surface-only winnowers. Playtest whether it's hard
    enough, and whether dust should also be usable (e.g. as filler).
-3. **Floors 6+** for production, utility and space science, and a win
+3. **Enemies from floor 4**, now that the military tier unlocks there.
+4. **Floors 6+** for production, utility and space science, and a win
    condition.
 
 ## Known quirks
@@ -35,18 +36,20 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 ## 1. Tunnel bore
 
 - [x] Three tiers: Mk1 (speed 1, no belts), Mk2 (speed 2, lays belt lanes,
-  unlocked by finding iron), Mk3 (speed 5, water coolant 1 per hit, unlocked
-  after 200 steel plates).
+  unlocked by finding iron), Mk3 (speed 5, bore coolant 100 a second while
+  digging, unlocked with oil processing along with coolant from 100 water,
+  20 petroleum gas and 2 dust; lubricant brings a recipe with 4 lubricant
+  instead of the petroleum).
 - [x] Heads hit three times as fast per tier (wooden 10 hits, clay 20, iron
   80, reinforced 500), so veins are long but feasible projects.
 - [x] Mk1/Mk2 are 2x2, rotatable (a connectionless fluid box keeps a square
   furnace rotatable), 4-direction sprites with the cutter overlapping the wall
   ahead; placeable anywhere on open ground. Each hit lands on the whole
   face: softer tiles (plain rock beside a vein) break first.
-- [x] Mk3 is 3 wide and 2 long with two cutters: supply loader, water inlet
+- [x] Mk3 is 3 wide and 2 long with two cutters: supply loader, coolant inlet
   and output loader across its back. It lays a pipe behind its inlet per tile
   from a pipe stock of up to 10, pulled off the supply lane (returned when
-  mined), so the water line follows it.
+  mined), so the coolant line follows it.
 - [x] Burner furnace: any drill head goes in, like ammo in a turret, and picks
   its dig recipe. Heads wear out like repair packs; the crafting bar is the
   head's wear. Dig recipes are always enabled; crafting heads unlocks.
@@ -82,7 +85,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 - [ ] Floors 6+ for the second half of the game.
 - [x] Ore veins in the rock (`veins` per floor, `runtime/veins.lua`): placed
   from the map seed, shown by base ore sprites on exposed rock, 20x harder,
-  rich in their resource, with an icon on every third exposed tile. Floor 1 stone; floor 2 stone and iron; floor 3
+  rich in their resource, with an icon on every third exposed tile. Floor 1 stone and clay; floor 2 stone and iron; floor 3
   copper, coal and iron. "Ore veins" setting; remote `set_veins`/`vein_at`.
 - [ ] Rare finds (geodes, artifacts).
 - [x] Heat on floor 5: bores without coolant stop.
@@ -135,9 +138,14 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 - [x] No science or labs. Red/green technologies unlock by floor arrivals and
   crafting/building triggers (`shared/progression.lua`); floor arrivals and
   discoveries (iron, copper) use scripted triggers.
-- [x] Automation unlocks with the first 100 smelted iron plates.
+- [x] Automation unlocks with the first 50 smelted iron plates, logistics
+  with 10 belts crafted.
 - [x] Military and blue tiers mapped (floor 4–5 arrivals, crafting and fluid
-  milestones); research speed 3–4 and uranium mining removed.
+  milestones); the first military technologies from floor 4. Uranium
+  processing with the first uranium dug up; landfill on floor 9 (out of
+  reach for now). All research speed upgrades and uranium mining removed.
+- [ ] Enemies from floor 4 on, to go with the military tier: underground
+  creatures, and whether the surface gets any.
 - [ ] Production/utility/space tiers (floors 6+), win condition.
 - [ ] Freeplay intro / tips explaining the loop.
 
@@ -145,7 +153,8 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 
 - [x] No ore on the surface. Crash site: core drill and 5 wooden drill heads
   in the ship, 2 coal in the wreckage, empty pockets.
-- [x] Drill heads: wooden (wood, stone), clay (shaped, then fired), iron (iron
+- [x] Drill heads: wooden (wood, stone), unfired clay (shaped; one hit),
+  clay (shaped, then fired), iron (iron
   discovery), reinforced (10 steel plates crafted).
 - [x] Sand → glass (pipes, lamps); clay → clay bricks (5:1; the base stone
   brick, renamed; boilers, steam engines, bore Mk1).
@@ -153,20 +162,24 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
   winnower (3x3, wind-powered, surface only), `prototypes/grinding.lua`, art
   from `tools/grinding_gfx.py`. The electric mining drill is removed: ore comes from digging.
 - [x] Hardened (plastics) and carbide (floor 5) drill heads; Mk3 bores use
-  water as coolant.
+  bore coolant (water, petroleum gas or lubricant, dust).
 - [ ] Balance pass on dig times, fuel, heads and drops per floor.
 
 ## 6. Polish
 
 - [ ] Technology icons; dig recipe icons per head and machine.
 - [ ] Locale review, factoriopedia entries, map colours.
-- [ ] Mod portal thumbnail and description.
+- [x] Mod portal thumbnail and description.
 
 ## 7. Tooling and testing
 
-- [x] Headless engine test (`v1/tests/run.sh`, 116 checks): tunnels and walls,
+- [x] Headless engine test (`v1/tests/run.sh`, 124 checks): tunnels and walls,
   bore placement, digging, belts, wires, core drill shafts to floor 2, stairs,
   transfers, crash site, technologies.
-- [x] `deploy_local.sh` links `src` into the mods folder.
+- [x] `deploy_local.sh` links `src` into the mods folder; `package.sh`
+  builds the mod portal zip.
+- [x] Locale check (`v1/tests/locale.sh`): every visible name, description
+  and runtime message key exists, following the game's fallbacks; keys the
+  base game alone misses are ignored.
 - [ ] Tests still missing: blocked bore, belt-fed supply, multiplayer forces.
 - [ ] Lua language server annotations (`.luarc.json`).

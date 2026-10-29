@@ -2,16 +2,20 @@
 local bore = {
   -- Mk1 (wood and clay bricks) only digs; Mk2 also lays its own supply and
   -- output belt lanes and has the loaders that connect them; Mk3 is much
-  -- faster but needs water as coolant, `coolant` units per hit.
+  -- faster but needs bore coolant (`coolant_fluid`), `coolant` units a second
+  -- while it digs.
   tiers = {
     ["ttc-mk1-bore"] = {sprite = "mk1", speed = 1, energy = "150kW", lays_belts = false},
     ["ttc-mk2-bore"] = {sprite = "mk2", speed = 2, energy = "300kW", lays_belts = true},
-    -- 3 wide: its water inlet sits in the middle of its back, between the
+    -- 3 wide: its coolant inlet sits in the middle of its back, between the
     -- belt lanes, and it lays a pipe there as it advances.
-    ["ttc-mk3-bore"] = {sprite = "mk3", speed = 5, energy = "750kW", lays_belts = true, coolant = 1,
+    ["ttc-mk3-bore"] = {sprite = "mk3", speed = 5, energy = "750kW", lays_belts = true, coolant = 100,
       width = 3, lays_pipes = true}
   },
   recipe_category = "ttc-dig",
+  -- Mostly water, with a little petroleum gas or lubricant and dust
+  -- (prototypes/bore.lua).
+  coolant_fluid = "ttc-coolant",
   -- Belts laid behind the bore per tile as its supply and output lanes. Taken
   -- from the supply lane into the bore's belt stock, not via the dig recipe.
   paving_item = "transport-belt",
@@ -36,9 +40,12 @@ local bore = {
   -- one head's whole life, so its progress bar shows the head wearing down.
   -- Dig recipes are always enabled, so a bore takes any head the player has;
   -- crafting the heads is what unlocks over time (prototypes/items.lua).
+  -- `own_description`: the item keeps its own description after the stats.
   heads = {
     -- Each kind hits three times as fast as the one before.
     wooden = {item = "ttc-wooden-drill-head", durability = 10, hit_time = 3},
+    -- Unfired clay crumbles after a single hit; firing it is worth the wait.
+    unfired_clay = {item = "ttc-unfired-clay-drill-head", durability = 1, hit_time = 1, own_description = true},
     clay = {item = "ttc-clay-drill-head", durability = 20, hit_time = 1},
     iron = {item = "ttc-iron-drill-head", durability = 80, hit_time = 1 / 3},
     reinforced = {item = "ttc-reinforced-drill-head", durability = 500, hit_time = 1 / 9},

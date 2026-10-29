@@ -46,9 +46,12 @@ return {
       {name = "ttc-sand", chance = 0.05, minimum = 1, maximum = 1}
     },
     -- Solid stone: nothing to gain, just rock to dig around (or through).
+    -- Clay: soft pockets of pure clay, quicker to dig than solid stone.
     veins = {
       {name = "stone", cell = 20, chance = 0.4, radius = {2, 5}, hardness = 20,
-        drops = {{name = "stone", chance = 1, minimum = 1, maximum = 2}}}
+        drops = {{name = "stone", chance = 1, minimum = 1, maximum = 2}}},
+      {name = "ttc-clay", sprite = "stone", tint = {r = 0.85, g = 0.55, b = 0.4}, cell = 24, chance = 0.35,
+        radius = {2, 4}, hardness = 5, drops = {{name = "ttc-clay", chance = 1, minimum = 1, maximum = 2}}}
     }
   },
   {
