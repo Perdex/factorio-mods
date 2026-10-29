@@ -4,6 +4,8 @@
 -- shaft: the core drill's dig from the floor above (the starting surface for
 --   floor 1) down into this one: `hits` drill head hits deep, each bringing up
 --   `drops` like a tunnel bore's. Any drill head works; better ones dig faster.
+--   `unlocks`: technologies researched once a shaft is `progress` (0..1) of the
+--   way down, with a `message` to the force.
 -- reached_unlocks: technologies researched when a shaft first reaches the layer.
 -- hits_per_tile: wall hardness, the hits a tunnel bore needs to break through
 --   one tile. Meant to grow steeply with depth.
@@ -127,6 +129,9 @@ return {
       hits = 40000,
       drops = {
         {name = "stone", chance = 0.1, minimum = 1, maximum = 1}
+      },
+      unlocks = {
+        {progress = 0.5, technology = "ttc-manhole", message = "ttc.manhole-realized"}
       }
     },
     reached_unlocks = {"ttc-reach-floor-4"},

@@ -24,23 +24,27 @@ The loop on every floor:
 4. **Supply the shaft down**: the core drill on each floor needs a steady
    flow of something made from what the floors above produce.
 
-## Things flow down; up only from floor 4
+## Going under something means going down a floor
 
-- **Item chute** (wood + stone) and **downpipe** (pipes + stone), both from
-  floor 2: a hopper or pipe end on one floor and an outlet directly below on
-  the next. Items and fluids only move down. Water is piped down from the
-  surface's lakes; there is no water underground.
+- **Underground belts and pipes-to-ground** really go underground: the base
+  game's are replaced by a *down* and an *up* end, each its own recipe from
+  half the old pair's ingredients. Down ends unlock as usual; the first
+  tier's up ends (belt and pipe) only on floor 3, faster tiers' with their
+  down ends. Until then things only flow down. A belt or pipe going down drops to an outlet directly
+  below on the next floor, facing the same way; one coming up rises from an
+  inlet directly below. Both ends are placed on the upper floor. To cross
+  something, route the belt through the floor below and bring it back up.
+  Belt ends are linked belts: items keep their lane, at the tier's speed.
+  On the deepest floor there is nothing to go under.
+- Water is piped down from the surface's lakes; there is no water
+  underground.
 - **Power connector** (floor 4): an electric pole whose twin below supplies
   the power drawn above, up to 10 MW.
-- All need the spot below to be dug out already, and removing either end
-  removes both.
-- **Up** is only by carrying things up the shaft stairs, until floor 4
-  (*freight lift*, items) and floor 5 (*lift pump*, fluids). These are
-  placed on the lower floor; their outlet opens on the floor above (or the
-  surface).
-
-So the first automation has to be built as a cascade: raw inputs from the
-surface and upper floors fall down to the factories below.
+- All need the spot below to be dug out and free: otherwise the piece goes
+  back into your hand. Removing either end removes both.
+- **Manhole** (halfway down the shaft to floor 4): a 2x2 hole over ground
+  that is dug out on the floor below. Step in and you land there; holes
+  over holes drop you several floors at once. Back up is by the stairs.
 
 ## Getting rid of rock
 
@@ -51,7 +55,7 @@ items into 2 and takes three times as long, so one stone grinder needs 2
 gravel grinders, 4 sand grinders and 8 winnowers behind it. The **winnower**
 (3x3, wind-driven, no fuel) lets the dust blow away — but only under open
 sky, so the dust has to get back to the surface: carried up the stairs at
-first, freight lifts from floor 4. On floor 1 the stone simply has to be
+first, then on belts coming up from below. On floor 1 the stone simply has to be
 stored. The sand on the way is welcome: it makes glass.
 
 ## Ore veins
@@ -99,7 +103,8 @@ vein is tens of tiles, best dug from all sides at once.
 ## Surface (no ore)
 
 - **Has:** trees (wood), rocks (stone), the crash site: the core drill in
-  the ship along with 5 wooden drill heads. Lakes for water.
+  the ship along with 5 wooden drill heads, and 2 coal in the wreckage to
+  start it with. Lakes for water.
 - **Make:** wooden drill heads, stone furnaces.
 - **Shaft to floor 1:** 100 hits (10 wooden heads), each hit bringing up
   1–2 sand and 2–3 clay. The core drill takes any drill head and wears it
@@ -121,7 +126,7 @@ vein is tens of tiles, best dug from all sides at once.
 
 ## Floor 2 — stone with iron (hardness 160) ✔
 
-- **Arrival unlocks:** item chute and downpipe.
+- **Arrival unlocks:** grinders and winnowers.
 - **Walls give per tile:** ~40 stone, ~8 iron ore, ~3 coal. A tile takes two
   iron heads (8 plates), so iron digging just about keeps itself going.
 - **Discovery — iron ore:** iron drill heads and the tunnel bore Mk2, which
@@ -137,16 +142,18 @@ vein is tens of tiles, best dug from all sides at once.
 - **Walls give per tile:** ~60 stone, ~20 copper ore, ~10 coal, ~13 iron:
   more iron than the iron heads a tile takes.
 - **Discovery — copper ore:** electronics, then electricity (steam from
-  surface water through downpipes); the green tier starts.
+  surface water piped down); the green tier starts.
+- **Arrival unlocks:** up ends for belts and pipes, so things can come back
+  up.
 - **Shaft to floor 4:** 40 000 hits — about 20 minutes of digging with
-  reinforced heads, ~4 000 stone to dispose of.
+  reinforced heads, ~4 000 stone to dispose of. Halfway down: the manhole.
 
 ## Floor 4 — sulfur and oil (hardness 2560)
 
 - **Walls give per tile:** ~50 stone, ~20 sulfur, ~20 coal, ~10 iron and
   copper ore. Veins of sulfur and coal; **oil pockets** leave a crude oil
   well for a pumpjack when a tunnel breaks into them.
-- **Arrival unlocks:** steel, power connectors, freight lifts, oil gathering,
+- **Arrival unlocks:** steel, power connectors, oil gathering,
   plastics, sulfur processing; the military tier.
 - **Heads:** hardened (with plastics); 200 steel plates unlock the Mk3 bore.
 - **Shaft to floor 5:** 100 000 hits — about 15 minutes with hardened heads,
@@ -158,7 +165,7 @@ vein is tens of tiles, best dug from all sides at once.
   stop with "too hot".
 - **Walls give per tile:** ~50 stone, ~20 uranium ore, ~30 iron and copper,
   ~20 sulfur; uranium, iron and copper veins.
-- **Arrival unlocks:** lift pumps, carbide drill heads, and the blue tier
+- **Arrival unlocks:** carbide drill heads, and the blue tier
   (with blue crafting milestones along the way).
 - **Shaft to floor 6:** not yet — floor 5 is the deepest.
 
@@ -192,5 +199,3 @@ out of reach until deeper floors exist.
 ## Open questions
 
 - **Enemies:** surface only, or underground creatures from floor 3 on?
-- **Item chute throughput:** currently unlimited; should it have a rate
-  (and an upgrade path)?

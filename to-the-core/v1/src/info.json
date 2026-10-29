@@ -1,10 +1,10 @@
 {
   "name": "to-the-core",
-  "version": "0.1.6",
+  "version": "0.0.7",
   "title": "To the Core",
   "author": "Perdex",
   "homepage": "https://github.com/Perdex/factorio-mods",
-  "description": "Dig through underground layers and build your way deeper. Replaces science with drilling!",
+  "description": "Early alpha! A full overhaul, removing all science from the game! Dig through underground layers and reach the core",
   "factorio_version": "2.1",
   "dependencies": [
     "base >= 2.1.23"

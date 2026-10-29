@@ -10,7 +10,8 @@ a core drill and a starter supply of iron plates, stone, wood, gears, belts
 and drill heads.
 
 1. The starting surface has no ore. Salvage the core drill and five wooden
-   drill heads from the crashed ship, and gather wood and stone. Wooden drill
+   drill heads from the crashed ship and 2 coal from the wreckage, and gather
+   wood and stone. Wooden drill
    heads take 2 wood and 1 stone. Place the core drill (5x5) and feed
    it fuel and drill heads: it takes any head, like the tunnel bore, and wears
    them out hit by hit. The shaft to floor 1 is 100 hits deep (10 wooden
@@ -49,9 +50,13 @@ and drill heads.
    just stone, an obstacle to dig around).
 7. If anything stands in the tiles ahead, the bore pauses without consuming
    anything and shows "Tunnel ahead is blocked".
-8. Things only flow down at first: from floor 2, item chutes and downpipes
-   (and from floor 4 power connectors) link a spot to the same spot on the
-   floor below, which must already be dug out. Water comes down from the
+8. Underground belts and pipes-to-ground really go underground: each comes
+   as a down end and an up end, and its other end opens directly below on
+   the next floor, which must already be dug out. To cross something, route
+   the belt through the floor below and bring it back up. Up ends unlock on
+   floor 3, so until then things only go down. Halfway down the shaft to
+   floor 4 comes the manhole, a hole to jump into that lands you on the
+   floor below. From floor 4, power connectors carry electricity down. Water comes down from the
    surface's lakes; pipes need glass.
    See `FLOORS.md` for the plan of floors 1-5.
 
@@ -66,7 +71,7 @@ Five floors: clay; stone with iron; copper and coal; sulfur and oil; and hot
 rock that only the water-cooled Mk3 bore can dig. Three bore tiers and six
 kinds of drill head. Red, green, military and blue technologies unlock by
 reaching floors and by crafting milestones; there is no science and no lab.
-From floor 4, freight lifts and lift pumps carry things back up. A game
+Underground belts and pipes go through the floor below. A game
 starts with empty pockets.
 
 Floors, shafts, drops, veins and unlocks are configured in

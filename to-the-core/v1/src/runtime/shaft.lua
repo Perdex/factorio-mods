@@ -326,6 +326,12 @@ local function update(state)
     return
   end
 
+  for _, unlock in ipairs(below.shaft.unlocks or {}) do
+    if state.hits >= unlock.progress * below.shaft.hits and research.unlock(drill.force, unlock.technology) then
+      drill.force.print({unlock.message})
+    end
+  end
+
   if state.hits + 0.001 >= below.shaft.hits then
     if not break_through(state, below, below_index) then
       set_status(drill, "landing-blocked", defines.entity_status_diode.red)

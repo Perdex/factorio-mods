@@ -1,18 +1,20 @@
 local bore = require("runtime.bore")
 local bore_config = require("shared.bore")
 local layers = require("runtime.layers")
+local manhole = require("runtime.manhole")
 local progression = require("runtime.progression")
 local shaft = require("runtime.shaft")
 local transfer = require("runtime.transfer")
 local veins = require("runtime.veins")
 
 -- A normal start has nothing but what survived the crash: the core drill and
--- a few wooden drill heads in the ship. Wood and stone come from trees and
--- rocks. The wreckage holds nothing (freeplay's default would be iron).
+-- a few wooden drill heads in the ship, and in the wreckage a little coal to
+-- start the drill with (freeplay's default would be iron). Wood and stone
+-- come from trees and rocks.
 local starter = {
   player = {},
   ship = {["ttc-core-drill"] = 1, ["ttc-wooden-drill-head"] = 5},
-  debris = {}
+  debris = {coal = 2}
 }
 
 local function state()
@@ -99,6 +101,8 @@ local function on_built(event)
     bore.register(entity)
   elseif transfer.handles(entity) then
     transfer.on_built(entity, event.player_index and game.get_player(event.player_index))
+  elseif manhole.handles(entity) then
+    manhole.on_built(entity, event.player_index and game.get_player(event.player_index))
   elseif entity.name == "ttc-winnower" then
     needs_open_sky(entity, event.player_index and game.get_player(event.player_index))
   end
@@ -123,6 +127,8 @@ local function on_rotated(event)
   local entity = event.entity
   if entity and entity.valid and bore.handles(entity) then
     bore.on_rotated(entity)
+  elseif entity and entity.valid and transfer.handles(entity) then
+    transfer.on_rotated(entity)
   end
 end
 
@@ -191,4 +197,7 @@ script.on_nth_tick(10, function()
   transfer.tick()
 end)
 script.on_nth_tick(30, shaft.tick)
-script.on_nth_tick(6, shaft.check_travel)
+script.on_nth_tick(6, function()
+  shaft.check_travel()
+  manhole.check_falls()
+end)

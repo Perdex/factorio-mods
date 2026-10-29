@@ -230,8 +230,32 @@ local function pulses()
   return storage.ttc.bore_pulses
 end
 
+-- Whether a player has wired the bore. The hidden combinator's own wires
+-- don't count: the bore's circuit settings only show once a player wires it.
+local function wired(entity)
+  for _, id in ipairs(wire_ids) do
+    local connector = entity.get_wire_connector(id, false)
+    if connector then
+      for _, connection in pairs(connector.connections) do
+        if connection.origin == defines.wire_origin.player then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
+local function remove_signals(state)
+  if state.signals and state.signals.valid then
+    state.signals.destroy()
+  end
+  state.signals = nil
+end
+
 -- The hidden combinator carrying the bore's own signals, wired to both of
--- the bore's circuit connectors. Created on demand, so older bores get one.
+-- the bore's circuit connectors. It only exists while the bore is wired and
+-- has an output turned on.
 local function signal_section(state)
   local entity = state.entity
   local combinator = state.signals
@@ -254,6 +278,10 @@ end
 
 -- Slot 1: hits remaining on the face ahead. Slot 2: the pulse when it moves.
 local function output_hits(state, remaining)
+  if not ((state.read_hits or state.read_moved) and wired(state.entity)) then
+    remove_signals(state)
+    return
+  end
   local section = signal_section(state)
   if state.read_hits then
     section.set_slot(1, {value = signal_value(state.hits_signal), min = remaining})
@@ -263,7 +291,7 @@ local function output_hits(state, remaining)
 end
 
 local function pulse_moved(state)
-  if not state.read_moved then
+  if not (state.read_moved and wired(state.entity)) then
     return
   end
   signal_section(state).set_slot(2, {value = signal_value(state.moved_signal), min = 1})
@@ -538,6 +566,11 @@ local wall_frame = "ttc-bore-wall"
 
 local function wall_panel(player)
   local frame = player.gui.relative[wall_frame]
+  if frame and not frame.circuit then
+    -- Built by an older version.
+    frame.destroy()
+    frame = nil
+  end
   if not frame then
     frame = player.gui.relative.add({
       type = "frame",
@@ -555,10 +588,11 @@ local function wall_panel(player)
     row.add({type = "sprite", name = "vein"})
     row.add({type = "label", name = "wall"})
     frame.add({type = "progressbar", name = "bar"}).style.width = 220
-    frame.add({type = "line"})
-    frame.add({type = "label", caption = {"ttc.bore-circuit-title"}, style = "caption_label"})
+    local circuit = frame.add({type = "flow", name = "circuit", direction = "vertical"})
+    circuit.add({type = "line"})
+    circuit.add({type = "label", caption = {"ttc.bore-circuit-title"}, style = "caption_label"})
     for _, option in ipairs({"hits", "moved"}) do
-      local option_row = frame.add({type = "flow", name = option, direction = "horizontal"})
+      local option_row = circuit.add({type = "flow", name = option, direction = "horizontal"})
       option_row.style.vertical_align = "center"
       option_row.add({type = "checkbox", name = "ttc-bore-read-" .. option, state = false,
         caption = {"ttc.bore-read-" .. option}, tags = {option = option}})
@@ -566,7 +600,7 @@ local function wall_panel(player)
       option_row.add({type = "choose-elem-button", name = "ttc-bore-signal-" .. option, elem_type = "signal",
         style = "slot_button_in_shallow_frame", tags = {option = option}})
     end
-    local hint = frame.add({type = "label", caption = {"ttc.bore-turn-hint"}})
+    local hint = circuit.add({type = "label", caption = {"ttc.bore-turn-hint"}})
     hint.style.single_line = false
     hint.style.maximal_width = 220
   end
@@ -578,10 +612,11 @@ local function show_wall(player, entity)
   local state = bores()[entity.unit_number]
   local layer = layers_by_surface[entity.surface.name]
   local row = frame.row
+  frame.circuit.visible = state ~= nil and wired(entity)
   if state then
     for _, option in ipairs({"hits", "moved"}) do
-      frame[option]["ttc-bore-read-" .. option].state = state["read_" .. option] or false
-      frame[option]["ttc-bore-signal-" .. option].elem_value = state[option .. "_signal"]
+      frame.circuit[option]["ttc-bore-read-" .. option].state = state["read_" .. option] or false
+      frame.circuit[option]["ttc-bore-signal-" .. option].elem_value = state[option .. "_signal"]
     end
   end
   if not (state and layer) then
@@ -637,7 +672,7 @@ function bore.on_gui_changed(event)
     state[option .. "_signal"] = bore_config[option .. "_signal"]
   end
   local layer = layers_by_surface[state.entity.surface.name]
-  if option == "hits" and layer then
+  if layer then
     output_hits(state, math.ceil(hits_needed(state.entity, layer) - state.hits))
   end
 end

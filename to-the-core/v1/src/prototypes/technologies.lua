@@ -12,8 +12,8 @@ local technologies = {
   },
   {
     name = "ttc-reach-floor-2",
-    icon = icons .. "downpipe.png",
-    recipes = {"ttc-downpipe", "ttc-item-chute", "ttc-grinder", "ttc-winnower"}
+    icon = icons .. "grinder.png",
+    recipes = {"ttc-grinder", "ttc-winnower"}
   },
   {
     name = "ttc-iron-discovery",
@@ -26,14 +26,21 @@ local technologies = {
     recipes = {}
   },
   {
+    -- Researched halfway down the shaft to floor 4 (`unlocks` in the shaft
+    -- config, shared/layers.lua).
+    name = "ttc-manhole",
+    icon = icons .. "manhole.png",
+    recipes = {"ttc-manhole"}
+  },
+  {
     name = "ttc-reach-floor-4",
     icon = icons .. "power-connector.png",
-    recipes = {"ttc-power-connector", "ttc-freight-lift"}
+    recipes = {"ttc-power-connector"}
   },
   {
     name = "ttc-reach-floor-5",
-    icon = icons .. "lift-pump.png",
-    recipes = {"ttc-lift-pump", "ttc-carbide-drill-head"}
+    icon = icons .. "carbide-drill-head.png",
+    recipes = {"ttc-carbide-drill-head"}
   },
   {
     name = "ttc-mk3-bore",

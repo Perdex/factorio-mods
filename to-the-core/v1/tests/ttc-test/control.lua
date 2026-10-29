@@ -17,7 +17,7 @@ local function check(name, ok, detail)
 end
 
 local S, B, D, M, W, C, chute, pipe, stray, combinator, reinforced, obstacle, V, vein_tile
-local lift, hot_mk2, hot_mk3, oil_tile, oil_bore, beside, grinder, winnower, T, pulses
+local hole, stray_hole, lift, lift_pump, hot_mk2, hot_mk3, oil_tile, oil_bore, beside, grinder, winnower, T, pulses
 local drill_position = {x = 100.5, y = 100.5}
 local east = defines.direction.east
 
@@ -212,25 +212,37 @@ script.on_event(defines.events.on_tick, function(event)
         serpent.line(label))
     end
     if tick == 9300 then
-      -- The shaft has broken through: drop items and water down to floor 1.
+      -- The shaft has broken through: a belt and water down to floor 1.
       local nauvis = game.surfaces.nauvis
-      chute = nauvis.create_entity({name = "ttc-item-chute", position = {100.5, 96.5}, force = "player", raise_built = true})
-      chute.insert({name = "wood", count = 20})
-      pipe = nauvis.create_entity({name = "ttc-downpipe", position = {102.5, 96.5}, force = "player", raise_built = true})
+      chute = nauvis.create_entity({name = "ttc-underground-belt-down", position = {100.5, 96.5},
+        direction = defines.direction.east, force = "player", raise_built = true})
+      chute.get_transport_line(1).insert_at_back({name = "wood", count = 1})
+      chute.get_transport_line(2).insert_at_back({name = "stone", count = 1})
+      pipe = nauvis.create_entity({name = "ttc-pipe-down", position = {102.5, 96.5}, force = "player", raise_built = true})
       pipe.set_fluid(1, {name = "water", amount = 300})
-      stray = nauvis.create_entity({name = "ttc-item-chute", position = {150.5, 150.5}, force = "player", raise_built = true})
+      stray = nauvis.create_entity({name = "ttc-underground-belt-down", position = {150.5, 150.5}, force = "player",
+        raise_built = true})
       nauvis.create_entity({name = "ttc-power-connector", position = {98.5, 96.5}, force = "player", raise_built = true})
       nauvis.find_entity("ttc-power-connector-sink", {98.5, 96.5}).energy = 1000000
+    elseif tick == 9900 then
+      local outlet = S.find_entity("ttc-underground-belt-down-outlet", {100.5, 96.5})
+      check("turning one belt end turns both", outlet and outlet.direction == chute.direction
+        and chute.linked_belt_neighbour == outlet and chute.linked_belt_type == "input",
+        outlet and {chute.direction, outlet.direction, chute.linked_belt_type})
     elseif tick == 9600 then
-      local outlet = S.find_entity("ttc-item-chute-outlet", {100.5, 96.5})
-      check("item chute outlet appears on the floor below", outlet ~= nil)
-      check("item chute drops items down",
-        outlet and outlet.get_inventory(defines.inventory.chest).get_item_count("wood") == 20 and chute.get_inventory(defines.inventory.chest).is_empty())
-      local pipe_outlet = S.find_entity("ttc-downpipe-outlet", {102.5, 96.5})
+      local outlet = S.find_entity("ttc-underground-belt-down-outlet", {100.5, 96.5})
+      check("a belt going down gets its outlet on the floor below", outlet ~= nil
+        and outlet.direction == defines.direction.east and outlet.linked_belt_type == "output")
+      local lines = outlet and {outlet.get_transport_line(1), outlet.get_transport_line(2)}
+      check("items go down on their own lane", lines and lines[1].get_item_count("wood") == 1
+        and lines[1].get_item_count("stone") == 0 and lines[2].get_item_count("stone") == 1,
+        lines and {lines[1].get_contents(), lines[2].get_contents()})
+      chute.rotate()
+      local pipe_outlet = S.find_entity("ttc-pipe-down-outlet", {102.5, 96.5})
       local fluid = pipe_outlet and pipe_outlet.get_fluid(1)
-      check("downpipe drains water down", fluid and fluid.name == "water" and fluid.amount == 300 and pipe.get_fluid(1) == nil,
+      check("a pipe going down drains water", fluid and fluid.name == "water" and fluid.amount == 300 and pipe.get_fluid(1) == nil,
         serpent.line(fluid))
-      check("chute over solid rock is refunded", not (stray and stray.valid)
+      check("a belt end over solid rock is refunded", not (stray and stray.valid)
         and game.surfaces.nauvis.count_entities_filtered({type = "item-entity", position = {150.5, 150.5}, radius = 2}) == 1)
       game.surfaces.nauvis.find_entities_filtered({type = "item-entity", position = {150.5, 150.5}, radius = 2})[1].destroy()
       pipe.destroy({raise_destroy = true})
@@ -317,7 +329,8 @@ script.on_event(defines.events.on_tick, function(event)
       local ship = remote.call("freeplay", "get_ship_items")
       check("core drill waits in the crashed ship", ship["ttc-core-drill"] == 1, serpent.line(ship))
       check("wooden drill heads wait in the crashed ship", ship["ttc-wooden-drill-head"] == 5)
-      check("nothing (no iron) in the wreckage", next(remote.call("freeplay", "get_debris_items")) == nil)
+      local debris = remote.call("freeplay", "get_debris_items")
+      check("only coal (no iron) in the wreckage", debris.coal == 2 and table_size(debris) == 1, serpent.line(debris))
       check("blades are gone", prototypes.item["ttc-blade"] == nil)
     else
       L("no freeplay interface in the test map")
@@ -439,14 +452,48 @@ script.on_event(defines.events.on_tick, function(event)
       and uses("boiler", "stone-brick") and uses("steam-engine", "stone-brick"))
     check("electric mining drill removed", prototypes.item["electric-mining-drill"].hidden
       and prototypes.technology["electric-mining-drill"].hidden)
-    check("item chute waits for floor 2", not game.forces.player.recipes["ttc-item-chute"].enabled
-      and game.forces.player.technologies["ttc-reach-floor-1"].researched)
+    local function amounts(list)
+      local found = {}
+      for _, entry in ipairs(list) do
+        found[entry.name] = entry.amount
+      end
+      return found
+    end
+    local function unlocks(technology, recipe)
+      for _, effect in ipairs(prototypes.technology[technology].effects) do
+        if effect.type == "unlock-recipe" and effect.recipe == recipe then
+          return true
+        end
+      end
+      return false
+    end
+    local down = amounts(prototypes.recipe["underground-belt"].products)
+    local up = amounts(prototypes.recipe["ttc-underground-belt-up"].products)
+    check("underground belts come as a down and an up end", prototypes.item["underground-belt"].hidden
+      and down["ttc-underground-belt-down"] == 1 and table_size(down) == 1
+      and up["ttc-underground-belt-up"] == 1 and table_size(up) == 1, serpent.line({down, up}))
+    check("up ends unlock on floor 3", unlocks("ttc-reach-floor-3", "ttc-underground-belt-up")
+      and unlocks("ttc-reach-floor-3", "ttc-pipe-up") and not unlocks("logistics", "ttc-underground-belt-up")
+      and unlocks("logistics-2", "ttc-fast-underground-belt-up"))
+    local fast_down = amounts(prototypes.recipe["fast-underground-belt"].ingredients)
+    local fast_up = amounts(prototypes.recipe["ttc-fast-underground-belt-up"].ingredients)
+    check("faster ends are made from the ends below them", fast_down["ttc-underground-belt-down"] == 1
+      and fast_up["ttc-underground-belt-up"] == 1 and not fast_down["ttc-underground-belt-up"],
+      serpent.line({fast_down, fast_up}))
+    check("the manhole comes halfway down to floor 4", prototypes.technology["ttc-manhole"].research_trigger.type == "scripted"
+      and not game.forces.player.recipes["ttc-manhole"].enabled)
     check("bore Mk1 has no loaders", #S.find_entities_filtered({name = "loader-1x1", area = {{0, -3}, {12, 3}}}) == 0)
     check("buildings in the pit's way are dropped on the ground", not obstacle.valid
       and #game.surfaces.nauvis.find_entities_filtered({type = "item-entity", position = drill_position, radius = 8}) > 0)
   elseif tick == 9940 then
     M.insert({name = "coal", count = 50})
   elseif tick == 10001 then
+    -- Manholes: one over dug-out ground on floor 1, one over rock.
+    tunnel.open_area(S, {x = 70, y = 44}, {x = 71, y = 45}, "stone-path")
+    hole = game.surfaces.nauvis.create_entity({name = "ttc-manhole", position = {71, 45}, force = "player",
+      raise_built = true})
+    stray_hole = game.surfaces.nauvis.create_entity({name = "ttc-manhole", position = {81, 45}, force = "player",
+      raise_built = true})
     -- A bore in a 2-tall corridor, told to turn clockwise: it crosses one
     -- open tile, turns south and starts on the rock there.
     tunnel.open_area(S, {x = 60, y = 44}, {x = 65, y = 45}, "stone-path")
@@ -504,16 +551,23 @@ script.on_event(defines.events.on_tick, function(event)
   elseif tick == 10101 then
     check("bore facing the landing's short wall digs", beside and beside.custom_status
       and beside.custom_status.label[1] ~= "ttc-status.front-blocked", beside and beside.custom_status and serpent.line(beside.custom_status.label))
-    -- A freight lift on floor 1 carries items up to the surface.
+    -- A belt and a pipe coming up from floor 1 to the surface.
     local nauvis = game.surfaces.nauvis
     for _, entity in pairs(nauvis.find_entities_filtered({position = {99.5, 104.5}, radius = 1.5})) do
       if entity.type ~= "character" then
         entity.destroy()
       end
     end
-    lift = S.create_entity({name = "ttc-freight-lift", position = {99.5, 104.5}, force = "player", raise_built = true})
-    if lift then
-      lift.insert({name = "stone", count = 30})
+    lift = nauvis.create_entity({name = "ttc-underground-belt-up", position = {99.5, 104.5},
+      direction = defines.direction.east, force = "player", raise_built = true})
+    local inlet = S.find_entity("ttc-underground-belt-up-inlet", {99.5, 104.5})
+    if inlet then
+      inlet.get_transport_line(2).insert_at_back({name = "stone", count = 1})
+    end
+    lift_pump = nauvis.create_entity({name = "ttc-pipe-up", position = {100.5, 104.5}, force = "player", raise_built = true})
+    local pump_inlet = S.find_entity("ttc-pipe-up-inlet", {100.5, 104.5})
+    if pump_inlet then
+      pump_inlet.set_fluid(1, {name = "water", amount = 100})
     end
     -- Floor 5 is too hot for bores without coolant.
     local hot = game.create_surface("ttc-floor-5", {width = 1, height = 1})
@@ -566,6 +620,15 @@ script.on_event(defines.events.on_tick, function(event)
       V.get_output_inventory().clear()
     end
   elseif tick == 11001 then
+    check("a manhole goes over dug-out ground", hole and hole.valid)
+    -- Spilled next to the spot, or a little further if something stands there.
+    local refunded = 0
+    for _, item in pairs(game.surfaces.nauvis.find_entities_filtered({type = "item-entity", position = {81, 45}, radius = 6})) do
+      if item.stack.name == "ttc-manhole" then
+        refunded = refunded + item.stack.count
+      end
+    end
+    check("a manhole over rock is refunded", not (stray_hole and stray_hole.valid) and refunded == 1, refunded)
     check("a turn signal turns the bore as it moves", T and T.direction == defines.direction.south
       and T.position.x == 62, T and {T.direction, T.position})
     local remaining = T and T.get_signal({type = "virtual", name = "signal-H"}, defines.wire_connector_id.circuit_red)
@@ -578,9 +641,11 @@ script.on_event(defines.events.on_tick, function(event)
     check("the bore keeps at the vein", V and V.position.x == vein_tile.x - 1
       and label and label[1] == "ttc-status.digging-vein" and tonumber(label[2]) > 40 and label[3] == "800",
       serpent.line(label))
-    local outlet = game.surfaces.nauvis.find_entity("ttc-freight-lift-outlet", {99.5, 104.5})
-    check("freight lift carries items up", lift and outlet
-      and outlet.get_inventory(defines.inventory.chest).get_item_count("stone") == 30, outlet and outlet.position)
+    check("a belt from below brings items up on their lane", lift and lift.valid
+      and lift.get_transport_line(2).get_item_count("stone") == 1 and lift.get_transport_line(1).get_item_count() == 0,
+      lift and lift.valid and lift.get_transport_line(2).get_contents())
+    local water = lift_pump and lift_pump.valid and lift_pump.get_fluid(1)
+    check("a pipe from below brings fluid up", water and water.name == "water" and water.amount == 100, water)
     check("bores without coolant are too hot on floor 5", hot_mk2.custom_status
       and hot_mk2.custom_status.label[1] == "ttc-status.too-hot")
     check("a Mk3 digs on floor 5", hot_mk3.crafting_progress > 0, hot_mk3.crafting_progress)

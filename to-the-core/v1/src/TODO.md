@@ -113,14 +113,19 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
   longer at each end so they join the ground around them.
 - [x] Shaft links per direction (`storage.ttc.shafts`), rebuilt from the
   pits for older saves. Stair travel covered by the engine test.
-- [x] One-way transfer down: item chute and downpipe (floor 2), power
-  connector (floor 4: hidden energy interfaces under twin poles).
+- [x] Underground belts and pipes-to-ground replaced by down and up ends
+  (linked belts keep lanes; pipes move 1200/s), with the other end created
+  directly below; up ends from floor 3. Power connector (floor 4: hidden
+  energy interfaces under twin poles).
+- [x] Manhole (2x2, halfway down the shaft to floor 4, with a chat line):
+  step in to land on the floor below; chains through holes below it.
+- [ ] Test the manhole fall and the halfway unlock (the headless test has
+  no player and doesn't reach floor 3).
+- [ ] Belt and pipe end art: the bottom ends reuse the top ends' sprites.
 - [ ] Power connector graphics (reuses the medium electric pole).
 - [x] Depth bar panel beside the core drill's window.
 - [ ] Shaft drops and depths for floors 3+ need real designs.
 - [ ] Landing spot blocked by player builds: currently waits; clear/relocate?
-- [ ] Item chute sprite polish (throughput stays unlimited: one tile can't
-  be loaded fast anyway).
 - [ ] Travel UX: hint on the stairs, maybe a hotkey.
 - [ ] Shaft art: depth in the pit, light on the landing, break-through effect.
 - [ ] Vehicles/trains between floors (later).
@@ -139,7 +144,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 ## 5. Start and items
 
 - [x] No ore on the surface. Crash site: core drill and 5 wooden drill heads
-  in the ship, nothing in the wreckage, empty pockets.
+  in the ship, 2 coal in the wreckage, empty pockets.
 - [x] Drill heads: wooden (wood, stone), clay (shaped, then fired), iron (iron
   discovery), reinforced (10 steel plates crafted).
 - [x] Sand → glass (pipes, lamps); clay → clay bricks (5:1; the base stone
@@ -159,7 +164,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 
 ## 7. Tooling and testing
 
-- [x] Headless engine test (`v1/tests/run.sh`, 109 checks): tunnels and walls,
+- [x] Headless engine test (`v1/tests/run.sh`, 116 checks): tunnels and walls,
   bore placement, digging, belts, wires, core drill shafts to floor 2, stairs,
   transfers, crash site, technologies.
 - [x] `deploy_local.sh` links `src` into the mods folder.

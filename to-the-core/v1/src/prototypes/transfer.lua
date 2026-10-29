@@ -1,6 +1,6 @@
--- Item chutes, downpipes and power connectors (down), freight lifts and lift
--- pumps (up): one-way links between floors. Sprites are
--- rendered by v1/tools/transfer_gfx.py.
+-- Links to the floor below (shared/transfer.lua): underground belts and
+-- pipes-to-ground that go down or come up, and power connectors. Pipe sprites
+-- are rendered by v1/tools/transfer_gfx.py; belts use the base game's.
 local transfer = require("shared.transfer")
 
 local graphics = "__to-the-core__/graphics/"
@@ -15,8 +15,17 @@ local function sprite(name)
   }
 end
 
+-- A base game icon with an arrow in its corner: down, or up for `up` kinds.
+local function arrow_icons(icon, up)
+  return {
+    {icon = icon, icon_size = 64},
+    {icon = "__base__/graphics/icons/arrows/" .. (up and "up" or "down") .. "-arrow.png", icon_size = 64,
+      scale = 0.25, shift = {-8, -8}}
+  }
+end
+
 -- Storage tanks only take two-way connections; the script alone moves fluid
--- from inlet to outlet, so nothing goes back up.
+-- from inlet to outlet, so nothing goes the other way.
 local function pipe_connections()
   local connections = {}
   for _, direction in ipairs({defines.direction.north, defines.direction.east, defines.direction.south, defines.direction.west}) do
@@ -25,12 +34,11 @@ local function pipe_connections()
   return connections
 end
 
-local function storage_tank(name, item, picture, icon)
+local function storage_tank(name, item, picture, icons)
   return {
     type = "storage-tank",
     name = name,
-    icon = graphics .. "icons/" .. (icon or "downpipe") .. ".png",
-    icon_size = 64,
+    icons = icons,
     flags = flags,
     minable = {mining_time = 0.3, result = item},
     placeable_by = {item = item, count = 1},
@@ -50,58 +58,79 @@ local function storage_tank(name, item, picture, icon)
   }
 end
 
-local function container(name, item, picture, icon)
-  return {
-    type = "container",
-    name = name,
-    icon = graphics .. "icons/" .. (icon or "item-chute") .. ".png",
-    icon_size = 64,
-    flags = flags,
-    minable = {mining_time = 0.3, result = item},
-    placeable_by = {item = item, count = 1},
-    max_health = 100,
-    collision_box = {{-0.35, -0.35}, {0.35, 0.35}},
-    selection_box = {{-0.5, -0.5}, {0.5, 0.5}},
-    inventory_size = 16,
-    picture = sprite(picture),
-    impact_category = "wood"
-  }
+-- A linked belt with an underground belt's speed and looks.
+local function linked_belt(underground, name, item, icons)
+  local belt = table.deepcopy(underground)
+  belt.type = "linked-belt"
+  belt.name = name
+  belt.icon = nil
+  belt.icons = icons
+  belt.hidden = nil
+  belt.minable = {mining_time = underground.minable and underground.minable.mining_time or 0.1, result = item}
+  belt.placeable_by = {item = item, count = 1}
+  belt.next_upgrade = nil
+  belt.fast_replaceable_group = nil
+  belt.max_distance = nil
+  belt.underground_sprite = nil
+  belt.underground_remove_belts_sprite = nil
+  belt.max_distance_underground_remove_belts_sprite = nil
+  belt.max_distance_tint = nil
+  belt.underground_collision_mask = nil
+  belt.allow_side_loading = false
+  return belt
 end
 
-local chute = transfer.kinds.item_chute
-local downpipe = transfer.kinds.downpipe
-local power = transfer.kinds.power
-local lift = transfer.kinds.freight_lift
-local lift_pump = transfer.kinds.lift_pump
-
-local function transfer_item(kind, icon, order)
+local function link_item(kind, icons, subgroup, order)
   return {
     type = "item",
     name = kind.item,
-    icon = graphics .. "icons/" .. icon .. ".png",
-    icon_size = 64,
-    subgroup = "ttc-boring",
-    order = "e[transfer]-" .. order,
-    place_result = kind.inlet,
-    stack_size = 20
+    icons = icons,
+    subgroup = subgroup,
+    order = order,
+    place_result = kind.top,
+    stack_size = 50
   }
 end
 
-local function transfer_recipe(kind, ingredients)
-  local recipe = {
-    type = "recipe",
-    name = kind.item,
-    categories = {"crafting"},
-    enabled = false,
-    energy_required = 5,
-    ingredients = {},
-    results = {{type = "item", name = kind.item, amount = 1}}
-  }
-  for _, ingredient in ipairs(ingredients) do
-    recipe.ingredients[#recipe.ingredients + 1] = {type = "item", name = ingredient[1], amount = ingredient[2]}
-  end
-  return recipe
+local prototypes = {}
+local function add(prototype)
+  prototypes[#prototypes + 1] = prototype
 end
+
+-- Underground belts and pipes-to-ground: the base game's are hidden, and
+-- data-final-fixes.lua swaps them out of every recipe.
+for key, kind in pairs(transfer.kinds) do
+  local base_name = kind.belt or (kind.flow and "pipe-to-ground")
+  local base_item = base_name and data.raw.item[base_name]
+  if base_item then
+    local icons = arrow_icons(base_item.icon, kind.up)
+    local order = base_item.order .. (kind.up and "-b" or "-a")
+    add(link_item(kind, icons, base_item.subgroup, order))
+    if kind.belt then
+      local underground = data.raw["underground-belt"][kind.belt]
+      add(linked_belt(underground, kind.top, kind.item, icons))
+      add(linked_belt(underground, kind.bottom, kind.item, icons))
+    else
+      local art = kind.up and "lift-pump" or "downpipe"
+      add(storage_tank(kind.top, kind.item, art .. "-top", icons))
+      add(storage_tank(kind.bottom, kind.item, art .. "-bottom", icons))
+    end
+  end
+end
+for base_name in pairs(transfer.replaced) do
+  local item = data.raw.item[base_name]
+  if item then
+    item.hidden = true
+    local entity = data.raw["underground-belt"][base_name] or data.raw["pipe-to-ground"][base_name]
+    if entity then
+      entity.hidden = true
+      -- An upgrade target needs an item that isn't hidden.
+      entity.next_upgrade = nil
+    end
+  end
+end
+
+local power = transfer.kinds.power
 
 local function power_pole(name)
   local pole = table.deepcopy(data.raw["electric-pole"]["medium-electric-pole"])
@@ -141,88 +170,32 @@ local function energy_interface(name, priority)
   }
 end
 
-data:extend({
-  container(chute.inlet, chute.item, "item-chute-top"),
-  container(chute.outlet, chute.item, "item-chute-bottom"),
-  storage_tank(downpipe.inlet, downpipe.item, "downpipe-top"),
-  storage_tank(downpipe.outlet, downpipe.item, "downpipe-bottom"),
-  container(lift.inlet, lift.item, "freight-lift-bottom", "freight-lift"),
-  container(lift.outlet, lift.item, "freight-lift-top", "freight-lift"),
-  storage_tank(lift_pump.inlet, lift_pump.item, "lift-pump-bottom", "lift-pump"),
-  storage_tank(lift_pump.outlet, lift_pump.item, "lift-pump-top", "lift-pump"),
-  transfer_item(lift, "freight-lift", "d[freight-lift]"),
-  transfer_item(lift_pump, "lift-pump", "e[lift-pump]"),
-  transfer_recipe(lift, {{"steel-plate", 20}, {"iron-gear-wheel", 20}, {"electronic-circuit", 10}, {"stone-brick", 20}}),
-  transfer_recipe(lift_pump, {{"steel-plate", 20}, {"pipe", 20}, {"engine-unit", 5}, {"electronic-circuit", 10}}),
-  power_pole(power.inlet),
-  power_pole(power.outlet),
-  energy_interface(power.sink, "secondary-input"),
-  energy_interface(power.source, "secondary-output"),
-  {
-    type = "item",
-    name = power.item,
-    icon = graphics .. "icons/power-connector.png",
-    icon_size = 64,
-    subgroup = "ttc-boring",
-    order = "e[transfer]-c[power-connector]",
-    place_result = power.inlet,
-    stack_size = 20
-  },
-  {
-    type = "recipe",
-    name = power.item,
-    categories = {"crafting"},
-    enabled = false,
-    energy_required = 2,
-    ingredients = {
-      {type = "item", name = "medium-electric-pole", amount = 2},
-      {type = "item", name = "copper-cable", amount = 20},
-      {type = "item", name = "stone-brick", amount = 10}
-    },
-    results = {{type = "item", name = power.item, amount = 1}}
-  },
-  {
-    type = "item",
-    name = chute.item,
-    icon = graphics .. "icons/item-chute.png",
-    icon_size = 64,
-    subgroup = "ttc-boring",
-    order = "e[transfer]-a[item-chute]",
-    place_result = chute.inlet,
-    stack_size = 20
-  },
-  {
-    type = "item",
-    name = downpipe.item,
-    icon = graphics .. "icons/downpipe.png",
-    icon_size = 64,
-    subgroup = "ttc-boring",
-    order = "e[transfer]-b[downpipe]",
-    place_result = downpipe.inlet,
-    stack_size = 20
-  },
-  {
-    type = "recipe",
-    name = chute.item,
-    categories = {"crafting"},
-    enabled = false,
-    energy_required = 2,
-    ingredients = {
-      {type = "item", name = "wood", amount = 10},
-      {type = "item", name = "stone", amount = 10}
-    },
-    results = {{type = "item", name = chute.item, amount = 1}}
-  },
-  {
-    type = "recipe",
-    name = downpipe.item,
-    categories = {"crafting"},
-    enabled = false,
-    energy_required = 2,
-    ingredients = {
-      {type = "item", name = "pipe", amount = 10},
-      {type = "item", name = "stone", amount = 10}
-    },
-    results = {{type = "item", name = downpipe.item, amount = 1}}
-  }
+add(power_pole(power.top))
+add(power_pole(power.bottom))
+add(energy_interface(power.sink, "secondary-input"))
+add(energy_interface(power.source, "secondary-output"))
+add({
+  type = "item",
+  name = power.item,
+  icon = graphics .. "icons/power-connector.png",
+  icon_size = 64,
+  subgroup = "ttc-boring",
+  order = "e[transfer]-c[power-connector]",
+  place_result = power.top,
+  stack_size = 20
 })
+add({
+  type = "recipe",
+  name = power.item,
+  categories = {"crafting"},
+  enabled = false,
+  energy_required = 2,
+  ingredients = {
+    {type = "item", name = "medium-electric-pole", amount = 2},
+    {type = "item", name = "copper-cable", amount = 20},
+    {type = "item", name = "stone-brick", amount = 10}
+  },
+  results = {{type = "item", name = power.item, amount = 1}}
+})
+
+data:extend(prototypes)

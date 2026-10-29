@@ -1,12 +1,13 @@
 """Render the one-way transfer entities between floors (1x1 tile each).
 
 Outputs into <out>:
-  item-chute-top.png / item-chute-bottom.png        96x96 (sprite + room)
-  downpipe-top.png / downpipe-bottom.png            96x96
-  item-chute-icon.png / downpipe-icon.png           64x64
+  downpipe-top.png / downpipe-bottom.png            96x96 (sprite + room)
+  lift-pump-top.png / lift-pump-bottom.png          96x96
   power-connector-icon.png                          64x64
-The top ends sit on the upper floor and swallow things; the bottom ends hang
-out of the ceiling of the floor below and drop them. Drawn at 64 px per tile
+The pipe down's top end sits on the upper floor and swallows fluid; its
+bottom end hangs out of the ceiling of the floor below. The pipe from below
+uses the same shapes with the arrows turned around. Belt ends use the base
+game's underground belt sprites. Drawn at 64 px per tile
 (scale 0.5) on a 1.5-tile canvas so rims and spouts can overhang.
 
 Usage: python3 transfer_gfx.py <output-dir>
@@ -38,36 +39,6 @@ def down_arrow(d, cx, cy, size, color, up=False):
 
 def finish(img, size=96):
     return img.resize((size, size), Image.LANCZOS)
-
-
-def chute_top(up=False):
-    img = Image.new("RGBA", (C, C), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    # stone collar with a wooden hopper funnelling into a dark hole
-    d.rounded_rectangle(box(0.04, 0.04, 0.96, 0.96), radius=SS * 8, fill=(116, 106, 94), outline=(52, 46, 40), width=SS * 3)
-    d.polygon([p(0.12, 0.12), p(0.88, 0.12), p(0.66, 0.4), p(0.34, 0.4)], fill=(150, 108, 64))
-    d.polygon([p(0.88, 0.12), p(0.88, 0.88), p(0.62, 0.62), p(0.66, 0.4)], fill=(124, 86, 50))
-    d.polygon([p(0.12, 0.88), p(0.88, 0.88), p(0.62, 0.62), p(0.38, 0.62)], fill=(104, 72, 40))
-    d.polygon([p(0.12, 0.12), p(0.34, 0.4), p(0.38, 0.62), p(0.12, 0.88)], fill=(136, 96, 56))
-    d.rectangle(box(0.34, 0.4, 0.66, 0.62), fill=(10, 9, 8))
-    for x in (0.12, 0.88):
-        d.line([p(x, 0.12), p(x, 0.88)], fill=(70, 48, 26), width=SS * 3)
-    down_arrow(d, 0.5, 0.5, 0.1, (236, 194, 70), up)
-    return finish(img)
-
-
-def chute_bottom(up=False):
-    img = Image.new("RGBA", (C, C), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    # wooden chute coming out of the ceiling (above the tile) into a catch box
-    d.polygon([p(0.3, -0.25), p(0.7, -0.25), p(0.66, 0.3), p(0.34, 0.3)], fill=(124, 86, 50), outline=(70, 48, 26))
-    d.rounded_rectangle(box(0.06, 0.22, 0.94, 0.96), radius=SS * 6, fill=(140, 100, 60), outline=(70, 48, 26), width=SS * 3)
-    d.rectangle(box(0.16, 0.34, 0.84, 0.86), fill=(84, 58, 34))
-    for k in range(3):
-        y = 0.34 + 0.17 * (k + 1)
-        d.line([p(0.06, y), p(0.94, y)], fill=(112, 78, 44), width=SS * 2)
-    down_arrow(d, 0.5, 0.05, 0.08, (236, 194, 70), up)
-    return finish(img)
 
 
 def pipe_collar(d, glass_y0, glass_y1):
@@ -105,16 +76,10 @@ def downpipe_bottom(up=False):
     return finish(img)
 
 
-for name, make in (("item-chute-top", chute_top), ("item-chute-bottom", chute_bottom),
-                   ("downpipe-top", downpipe_top), ("downpipe-bottom", downpipe_bottom)):
+for name, make in (("downpipe-top", downpipe_top), ("downpipe-bottom", downpipe_bottom)):
     make().save(f"{out}/{name}.png", optimize=True)
-# The lifts going up use the same shapes with the arrows turned around: the
-# inlet hangs below (bottom), the outlet opens in the floor above (top).
-for name, make in (("freight-lift-top", chute_top), ("freight-lift-bottom", chute_bottom),
-                   ("lift-pump-top", downpipe_top), ("lift-pump-bottom", downpipe_bottom)):
+for name, make in (("lift-pump-top", downpipe_top), ("lift-pump-bottom", downpipe_bottom)):
     make(up=True).save(f"{out}/{name}.png", optimize=True)
-chute_bottom(up=True).crop((16, 10, 80, 74)).save(f"{out}/freight-lift-icon.png", optimize=True)
-downpipe_bottom(up=True).crop((16, 10, 80, 74)).save(f"{out}/lift-pump-icon.png", optimize=True)
 
 def power_icon():
     img = Image.new("RGBA", (C, C), (0, 0, 0, 0))
@@ -128,6 +93,4 @@ def power_icon():
     return finish(img)
 
 
-chute_top().crop((16, 16, 80, 80)).save(f"{out}/item-chute-icon.png", optimize=True)
 power_icon().crop((16, 16, 80, 80)).save(f"{out}/power-connector-icon.png", optimize=True)
-downpipe_bottom().crop((16, 10, 80, 74)).save(f"{out}/downpipe-icon.png", optimize=True)
