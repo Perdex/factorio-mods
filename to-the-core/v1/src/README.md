@@ -35,8 +35,9 @@ and drill heads.
    turret takes any ammo. It has a fuel slot with its own burn bar and a
    progress bar that shows the current head wearing down (heads wear out like
    repair packs). The floor decides how hard the rock is and what comes out:
-   floor 1 is clay, 40 hits per tile: two clay heads and 40 s in a Mk1. Each tile
-   yields about 20 clay and a lot of loose stone, plus a little coal and
+   floor 1 is clay, 20 hits per tile, whatever the bore: a 2-wide step takes 1.6
+   clay heads and 40 s in a Mk1. Each step
+   yields about 12 clay and a lot of loose stone, plus a little coal and
    sand: getting rid of the rock is part of the job. Iron is on floor 2,
    which is four times harder.
 5. The tunnel bore Mk2 (unlocked by finding iron) also lays two belts per

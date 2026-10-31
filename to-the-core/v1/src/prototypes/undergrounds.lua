@@ -1,7 +1,9 @@
 -- Swaps the base game's underground belts and pipes-to-ground out of every
 -- recipe for their down and up ends (shared/transfer.lua). A recipe that made
--- a pair now makes one down end, from half the ingredients (down ends of the
--- tier below among them), and a new recipe makes the up end the same way.
+-- a pair is hidden, and two new recipes, named like the ends they make so
+-- Factoriopedia shows each end once, make one down or one up end from half
+-- the ingredients (the same ends of the tier below among them). Technologies
+-- that unlocked the old recipe unlock the down end's.
 -- Runs in data-final-fixes so every recipe and technology is known.
 local transfer = require("shared.transfer")
 
@@ -59,37 +61,45 @@ local function swap_ingredients(recipe)
   end
 end
 
-local up_recipes = {}
+-- base recipe name -> {down = recipe, up = recipe, up_unlock = technology}
+local split = {}
 for name, recipe in pairs(data.raw.recipe) do
   local base_name = made(recipe)
   if base_name then
     local ends = transfer.replaced[base_name]
-    local up = table.deepcopy(recipe)
-    up.name = ends[2]
-    up.ingredients = halved(recipe.ingredients, 2)
-    up.results = halved(recipe.results, 2)
-    up.main_product = nil
-    recipe.ingredients = halved(recipe.ingredients, 1)
-    recipe.results = halved(recipe.results, 1)
-    recipe.main_product = nil
-    up_recipes[name] = {recipe = up, unlock = up_unlock[base_name]}
+    local pair = {up_unlock = up_unlock[base_name]}
+    for index, way in ipairs({"down", "up"}) do
+      local copy = table.deepcopy(recipe)
+      copy.name = ends[index]
+      copy.ingredients = halved(recipe.ingredients, index)
+      copy.results = halved(recipe.results, index)
+      copy.main_product = nil
+      copy.localised_name = nil
+      pair[way] = copy
+    end
+    split[name] = pair
   else
     swap_ingredients(recipe)
   end
 end
 
-for name, up in pairs(up_recipes) do
-  data:extend({up.recipe})
-  if up.unlock then
-    up.recipe.enabled = false
-    table.insert(data.raw.technology[up.unlock].effects, {type = "unlock-recipe", recipe = up.recipe.name})
-  else
-    for _, technology in pairs(data.raw.technology) do
-      for _, effect in ipairs(technology.effects or {}) do
-        if effect.type == "unlock-recipe" and effect.recipe == name then
-          table.insert(technology.effects, {type = "unlock-recipe", recipe = up.recipe.name})
-          break
+for name, pair in pairs(split) do
+  local old = data.raw.recipe[name]
+  old.hidden = true
+  old.enabled = false
+  data:extend({pair.down, pair.up})
+  if pair.up_unlock then
+    pair.up.enabled = false
+    table.insert(data.raw.technology[pair.up_unlock].effects, {type = "unlock-recipe", recipe = pair.up.name})
+  end
+  for _, technology in pairs(data.raw.technology) do
+    for index, effect in ipairs(technology.effects or {}) do
+      if effect.type == "unlock-recipe" and effect.recipe == name then
+        effect.recipe = pair.down.name
+        if not pair.up_unlock then
+          table.insert(technology.effects, index + 1, {type = "unlock-recipe", recipe = pair.up.name})
         end
+        break
       end
     end
   end

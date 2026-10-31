@@ -2,12 +2,13 @@ local bore = require("shared.bore")
 
 local graphics = "__to-the-core__/graphics/"
 
--- Frames are 4x4 tiles centred on the 2x2 body, so the cutter head overlaps
--- the wall the bore is digging into. Rendered by v1/tools/bore_gfx.py.
-local function direction_animation(sprite, direction, width)
+-- Frames are one tile bigger than the body on every side, so the cutter head
+-- overlaps the wall the bore is digging into. Rendered by
+-- v1/tools/bore_gfx.py.
+local function direction_animation(sprite, direction, width, length)
   local sheet = graphics .. "entities/" .. sprite .. "-bore-" .. direction
-  -- Frames are (width + 2) tiles across the bore and 4 along it.
-  local across, along = (width + 2) * 64, 256
+  -- Frames are (width + 2) tiles across the bore and (length + 2) along it.
+  local across, along = (width + 2) * 64, (length + 2) * 64
   local sideways = direction == "east" or direction == "west"
   local frame_width = sideways and along or across
   local frame_height = sideways and across or along
@@ -48,8 +49,9 @@ data:extend({
 -- head's dig recipe, like ammo in a turret.
 local function bore_entity(name, tier)
   local icon = graphics .. "icons/" .. tier.sprite .. "-bore.png"
-  -- Across the digging direction (2 or 3 tiles); 2 tiles along it.
-  local half = (tier.width or 2) / 2
+  -- Across the digging direction and along it (2 or 3 tiles each).
+  local width, length = tier.width or 2, tier.length or 2
+  local half, half_length = width / 2, length / 2
   data:extend({
     {
       type = "furnace",
@@ -61,13 +63,13 @@ local function bore_entity(name, tier)
       max_health = 400,
       corpse = "medium-remnants",
       dying_explosion = "medium-explosion",
-      collision_box = {{-half + 0.1, -0.9}, {half - 0.1, 0.9}},
-      selection_box = {{-half, -1}, {half, 1}},
+      collision_box = {{-half + 0.1, -half_length + 0.1}, {half - 0.1, half_length - 0.1}},
+      selection_box = {{-half, -half_length}, {half, half_length}},
       -- Stands anywhere on open ground; it crosses open ground one tile per
       -- hit until it meets rock.
       tile_buildability_rules = {
         {
-          area = {{-half + 0.1, -0.9}, {half - 0.1, 0.9}},
+          area = {{-half + 0.1, -half_length + 0.1}, {half - 0.1, half_length - 0.1}},
           required_tiles = {layers = {ground_tile = true}},
           colliding_tiles = {layers = {out_of_map = true}},
           remove_on_collision = true
@@ -90,10 +92,10 @@ local function bore_entity(name, tier)
       },
       graphics_set = {
         animation = {
-          north = direction_animation(tier.sprite, "north", tier.width or 2),
-          east = direction_animation(tier.sprite, "east", tier.width or 2),
-          south = direction_animation(tier.sprite, "south", tier.width or 2),
-          west = direction_animation(tier.sprite, "west", tier.width or 2)
+          north = direction_animation(tier.sprite, "north", width, length),
+          east = direction_animation(tier.sprite, "east", width, length),
+          south = direction_animation(tier.sprite, "south", width, length),
+          west = direction_animation(tier.sprite, "west", width, length)
         }
       },
       -- Square crafting machines are only rotatable with a fluid box. Bores
@@ -105,7 +107,7 @@ local function bore_entity(name, tier)
           volume = 200,
           filter = bore.coolant_fluid,
           pipe_connections = {
-            {flow_direction = "input", direction = defines.direction.south, position = {0, 0.5}}
+            {flow_direction = "input", direction = defines.direction.south, position = {0, half_length - 0.5}}
           }
         } or {production_type = "input", volume = 1, pipe_connections = {}}
       },

@@ -5,8 +5,9 @@ Reads two `--dump-data` prototype dumps, one with the mod and a baseline with
 the base game alone, and the locale files. Checked in each dump: every
 localised string set anywhere in a prototype (names, descriptions, trigger
 descriptions); the default names of the mod's own visible prototypes
-(ttc-*), of visible items and the entities they place, of visible recipes,
-technologies, fluids and mod settings. Keys the base game alone already
+(ttc-*), of visible items and the entities they place, of visible recipes
+(one named differently from its product needs a name of its own:
+Factoriopedia lists it separately), technologies, fluids and mod settings. Keys the base game alone already
 misses are left out. Also the locale keys the mod's Lua sources use: string
 literals shaped like the mod's keys ("ttc.x", "ttc-status.y"), statuses and
 refund reasons named at their call sites, and the keys built from the shared
@@ -133,7 +134,10 @@ def find_missing(raw, keys):
                 return True
             results = prototype.get("results") or []
             main = prototype.get("main_product") or (results[0]["name"] if len(results) == 1 else None)
-            if not main:
+            # A recipe named differently from its product gets an entry of
+            # its own in Factoriopedia, which shows an unknown key unless the
+            # recipe has a name of its own.
+            if not main or main != name:
                 return False
             product = next((r for r in results if r["name"] == main), {"type": "item"})
             if product.get("type") == "fluid":

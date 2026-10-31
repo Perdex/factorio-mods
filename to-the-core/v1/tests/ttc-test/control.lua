@@ -1,6 +1,7 @@
 -- Engine test for To the Core, run by tests/run.sh. Logs "TTC ..." lines;
 -- checks print PASS/FAIL.
 local tunnel = require("__to-the-core__/runtime/tunnel")
+local layer_configs = require("__to-the-core__/shared/layers")
 
 local function L(...)
   local n = select("#", ...)
@@ -12,12 +13,24 @@ local function L(...)
   log("TTC " .. table.concat(t, " "))
 end
 
+-- The floor whose arrival technology unlocks a recipe, if any.
+local function unlocked_on_floor(recipe)
+  for floor = 1, 6 do
+    for _, effect in ipairs(prototypes.technology["ttc-reach-floor-" .. floor].effects) do
+      if effect.type == "unlock-recipe" and effect.recipe == recipe then
+        return floor
+      end
+    end
+  end
+end
+
 local function check(name, ok, detail)
   L(ok and "PASS" or "FAIL", name, detail or "")
 end
 
 local S, B, D, M, W, C, chute, pipe, stray, combinator, reinforced, obstacle, V, vein_tile
-local hole, stray_hole, lift, lift_pump, hot_mk2, hot_mk3, oil_tile, oil_bore, beside, grinder, winnower, T, pulses
+local vein_drops = {}
+local uranium_bore, wide_bore, half_bore, rock_grinder, hole, stray_hole, lift, lift_pump, hot_mk2, hot_mk3, oil_tile, oil_bore, beside, grinder, winnower, T, pulses
 local drill_position = {x = 100.5, y = 100.5}
 local east = defines.direction.east
 
@@ -79,6 +92,11 @@ script.on_event(defines.events.on_tick, function(event)
   if C and C.valid and tick > 300 and tick < 590 then
     C.set_fluid(1, {name = "ttc-coolant", amount = 200})
   end
+  for _, cooled in ipairs({wide_bore, uranium_bore}) do
+    if cooled and cooled.valid then
+      cooled.set_fluid(1, {name = "ttc-coolant", amount = 200})
+    end
+  end
   if T and T.valid and T.get_signal({type = "virtual", name = "signal-check"},
     defines.wire_connector_id.circuit_red) > 0 then
     pulses = pulses + 1
@@ -134,11 +152,12 @@ script.on_event(defines.events.on_tick, function(event)
     -- A Mk3 on the origin platform's west edge, with heads and fuel but no
     -- water yet.
     -- 3 wide: centred on a tile across its digging direction.
-    C = S.create_entity({name = "ttc-mk3-bore", position = {-5, 0.5}, direction = defines.direction.west, force = "player", raise_built = true})
+    C = S.create_entity({name = "ttc-mk3-bore", position = {-4.5, 0.5}, direction = defines.direction.west, force = "player", raise_built = true})
     C.insert({name = "ttc-iron-drill-head", count = 2})
     C.insert({name = "coal", count = 10})
 
-    -- The main bore: four clay heads (20 hits each), two 40-hit tiles.
+    -- The main bore: four clay heads (25 hits each), two 40-hit tiles and
+    -- 20 hits into the next.
     -- Getting rid of rock: a grinder on stone, a winnower on dust, and a
     -- winnower wrongly built underground.
     local nauvis = game.surfaces.nauvis
@@ -150,6 +169,10 @@ script.on_event(defines.events.on_tick, function(event)
     grinder = nauvis.create_entity({name = "ttc-grinder", position = {-80, -60}, force = "player", raise_built = true})
     grinder.insert({name = "stone", count = 20})
     grinder.insert({name = "coal", count = 5})
+    -- And one on floor 2's iron-rich rock.
+    rock_grinder = nauvis.create_entity({name = "ttc-grinder", position = {-80, -55}, force = "player", raise_built = true})
+    rock_grinder.insert({name = "ttc-iron-rich-rock", count = 50})
+    rock_grinder.insert({name = "coal", count = 10})
     winnower = nauvis.create_entity({name = "ttc-winnower", position = {-75.5, -60.5}, force = "player", raise_built = true})
     winnower.insert({name = "ttc-dust", count = 10})
 
@@ -230,10 +253,18 @@ script.on_event(defines.events.on_tick, function(event)
         and petroleum.water == 100 and petroleum["petroleum-gas"] == 20 and petroleum["ttc-dust"] == 2
         and lubricant.water == 100 and lubricant.lubricant == 4 and lubricant["ttc-dust"] == 2,
         serpent.line({petroleum, lubricant}))
-      local reinforced_trigger = prototypes.technology["ttc-reinforced-drill-head"].research_trigger
-      check("reinforced heads unlock after a few steel plates",
-        reinforced_trigger.type == "craft-item" and reinforced_trigger.item.name == "steel-plate"
-        and reinforced_trigger.count == 10, serpent.line(reinforced_trigger))
+      -- Drill heads come floor by floor.
+      local head_floors = {}
+      for floor = 1, 6 do
+        for recipe in pairs(unlocked_by("ttc-reach-floor-" .. floor)) do
+          head_floors[recipe] = floor
+        end
+      end
+      check("drill heads unlock floor by floor", head_floors["ttc-clay-drill-head"] == 1
+        and head_floors["ttc-iron-drill-head"] == 2 and head_floors["ttc-reinforced-drill-head"] == 4
+        and head_floors["ttc-hardened-drill-head"] == 5 and head_floors["ttc-carbide-drill-head"] == 6
+        and not unlocked_by("ttc-iron-discovery")["ttc-iron-drill-head"]
+        and prototypes.technology["ttc-reinforced-drill-head"] == nil, serpent.line(head_floors))
     end
     if tick == 300 then
       check("inserting a drill head picks the bore's dig recipe", B.get_recipe() and B.get_recipe().name == "ttc-dig-clay",
@@ -374,7 +405,8 @@ script.on_event(defines.events.on_tick, function(event)
       local output = M.get_output_inventory()
       check("moved drill keeps the shaft's sand and clay and digs on",
         output.get_item_count("ttc-sand") > 0 and output.get_item_count("ttc-clay") > 0
-          and output.get_item_count("stone") > 0, serpent.line(output.get_contents()))
+          and output.get_item_count("stone") + output.get_item_count("ttc-iron-rich-rock") > 0,
+          serpent.line(output.get_contents()))
       local input = M.get_inventory(defines.inventory.crafter_input)
       local spare = input.get_item_count("ttc-wooden-drill-head") + (M.is_crafting() and 1 or 0)
       check("moved drill brought its spare heads down", spare >= 1 and spare <= 13, spare)
@@ -484,6 +516,94 @@ script.on_event(defines.events.on_tick, function(event)
     end
     check("grinding turns 3 into 2, each step three times slower", chain)
     check("grinders wait for floor 2", not game.forces.player.recipes["ttc-grinder"].enabled)
+    local ground = rock_grinder.get_output_inventory()
+    check("ground iron-rich rock gives gravel and iron granules, no copper", ground.get_item_count("ttc-gravel") >= 30
+      and ground.get_item_count("ttc-iron-granules") > 0 and ground.get_item_count("ttc-copper-granules") == 0,
+      serpent.line(ground.get_contents()))
+    -- A product's chance: its independent chance times its share of the
+    -- recipe's one shared roll.
+    local function products(name)
+      local found = {}
+      for _, product in ipairs(prototypes.recipe[name].products) do
+        local shared = product.shared_probability
+        local chance = (product.independent_probability or 1) * (shared and shared.max - shared.min or 1)
+        found[product.name] = math.floor(chance * 1000 + 0.5) / 1000
+      end
+      return found
+    end
+    local sorted = products("ttc-sort-iron-rich-rock")
+    check("iron-rich rock is sorted only by hand", prototypes.recipe["ttc-sort-iron-rich-rock"].categories[1] == "hand-crafting"
+      and prototypes.recipe["ttc-sort-iron-rich-rock"].energy == 0.5
+      and sorted["iron-ore"] == 0.2 and not sorted["copper-ore"] and sorted.coal == 0.02 and sorted.stone == 0.78,
+      serpent.line(sorted))
+    local grains = products("ttc-grind-iron-rich-rock")
+    local copper_grains = products("ttc-grind-copper-rich-rock")
+    check("grinding gives 80% granules of the rock's metal", grains["ttc-gravel"] == 1
+      and grains["ttc-iron-granules"] == 0.8 and not grains["ttc-copper-granules"]
+      and copper_grains["ttc-copper-granules"] == 0.8, serpent.line({grains, copper_grains}))
+    check("copper-rich rock is sorted and smelted from floor 3", unlocked_on_floor("ttc-sort-copper-rich-rock") == 3
+      and unlocked_on_floor("ttc-copper-plate-from-granules") == 3)
+    local floor_3 = {}
+    for _, drop in ipairs(layer_configs[3].drops) do
+      floor_3[drop.name] = drop.chance
+    end
+    check("floor 3's walls give iron- and copper-rich rock alike, no plain ore or stone",
+      floor_3["ttc-iron-rich-rock"] and floor_3["ttc-iron-rich-rock"] == floor_3["ttc-copper-rich-rock"]
+      and not floor_3.stone and not floor_3["iron-ore"] and not floor_3["copper-ore"], serpent.line(floor_3))
+    local assembler = prototypes.entity["assembling-machine-1"]
+    local assembler_parts = {}
+    for _, ingredient in ipairs(prototypes.recipe["assembling-machine-1"].ingredients) do
+      assembler_parts[ingredient.name] = true
+    end
+    check("the first assembling machine burns fuel and needs no circuits", assembler.burner_prototype ~= nil
+      and not assembler_parts["electronic-circuit"], serpent.line(assembler_parts))
+    check("power waits for the first copper-rich rock, pipes come with floor 2",
+      prototypes.technology["steam-power"].research_trigger.type == "scripted"
+      and unlocked_on_floor("pipe") == 2 and unlocked_on_floor("offshore-pump") == 2
+      and unlocked_on_floor("ttc-pipe-down") == 2)
+    local smelt = prototypes.recipe["ttc-copper-plate-from-granules"]
+    check("granules smelt 4:1 into plates", smelt.categories[1] == "smelting" and smelt.ingredients[1].amount == 4
+      and smelt.products[1].name == "copper-plate" and smelt.products[1].amount == 1)
+    local floor_2 = {}
+    for _, drop in ipairs(layer_configs[2].drops) do
+      floor_2[drop.name] = true
+    end
+    check("floor 2's walls give iron-rich rock, not stone or iron ore", floor_2["ttc-iron-rich-rock"]
+      and not floor_2.stone and not floor_2["iron-ore"])
+    local floor_2_veins = {}
+    for _, vein in ipairs(layer_configs[2].veins) do
+      floor_2_veins[vein.name] = true
+    end
+    local shaft_drops = {}
+    for _, drop in ipairs(layer_configs[2].shaft.drops) do
+      shaft_drops[drop.name] = drop.chance
+    end
+    check("the shaft to floor 2 brings up stone and some iron-rich rock, sortable from floor 2",
+      shaft_drops.stone == 0.8 and shaft_drops["ttc-iron-rich-rock"] == 0.2
+      and not game.forces.player.recipes["ttc-sort-iron-rich-rock"].enabled
+      and unlocked_on_floor("ttc-sort-iron-rich-rock") == 2, serpent.line(shaft_drops))
+    local deep = {}
+    for _, drop in ipairs(layer_configs[4].shaft.drops) do
+      deep[drop.name] = true
+    end
+    check("the drill on floor 2 brings up only iron-rich rock", #layer_configs[3].shaft.drops == 1
+      and layer_configs[3].shaft.drops[1].name == "ttc-iron-rich-rock")
+    local deepest = {}
+    for _, drop in ipairs(layer_configs[5].shaft.drops) do
+      deepest[drop.name] = true
+    end
+    check("deeper shafts bring up both floors' wall materials, nothing new", deep["ttc-iron-rich-rock"]
+      and deep["ttc-copper-rich-rock"] and deep.coal and not deep.sulfur and deepest.sulfur and not deepest["uranium-ore"],
+      serpent.line({deep, deepest}))
+    local wall_uranium = false
+    for _, drop in ipairs(layer_configs[5].drops) do
+      wall_uranium = wall_uranium or drop.name == "uranium-ore"
+    end
+    check("uranium only in veins", not wall_uranium)
+    check("floor 2 has stone and coal veins, no iron", floor_2_veins.stone and floor_2_veins.coal
+      and not floor_2_veins["iron-ore"])
+    check("floor 2's walls take 80 hits a tile, 40 iron-rich rock a 2-wide step", layer_configs[2].hits_per_tile == 80
+      and layer_configs[2].drops[1].chance * 80 * 2 == 40)
     check("a grinder grinds stone to gravel", grinder.get_output_inventory().get_item_count("ttc-gravel") > 0,
       serpent.line(grinder.get_output_inventory().get_contents()))
     check("a winnower lets dust blow away on the surface",
@@ -514,15 +634,16 @@ script.on_event(defines.events.on_tick, function(event)
       end
       return false
     end
-    local down = amounts(prototypes.recipe["underground-belt"].products)
+    local down = amounts(prototypes.recipe["ttc-underground-belt-down"].products)
     local up = amounts(prototypes.recipe["ttc-underground-belt-up"].products)
     check("underground belts come as a down and an up end", prototypes.item["underground-belt"].hidden
+      and prototypes.recipe["underground-belt"].hidden and unlocks("logistics", "ttc-underground-belt-down")
       and down["ttc-underground-belt-down"] == 1 and table_size(down) == 1
       and up["ttc-underground-belt-up"] == 1 and table_size(up) == 1, serpent.line({down, up}))
     check("up ends unlock on floor 3", unlocks("ttc-reach-floor-3", "ttc-underground-belt-up")
       and unlocks("ttc-reach-floor-3", "ttc-pipe-up") and not unlocks("logistics", "ttc-underground-belt-up")
       and unlocks("logistics-2", "ttc-fast-underground-belt-up"))
-    local fast_down = amounts(prototypes.recipe["fast-underground-belt"].ingredients)
+    local fast_down = amounts(prototypes.recipe["ttc-fast-underground-belt-down"].ingredients)
     local fast_up = amounts(prototypes.recipe["ttc-fast-underground-belt-up"].ingredients)
     check("faster ends are made from the ends below them", fast_down["ttc-underground-belt-down"] == 1
       and fast_up["ttc-underground-belt-up"] == 1 and not fast_down["ttc-underground-belt-up"],
@@ -535,6 +656,19 @@ script.on_event(defines.events.on_tick, function(event)
   elseif tick == 9940 then
     M.insert({name = "coal", count = 50})
   elseif tick == 10001 then
+    -- A Mk3 (3 wide) on floor 1: each tile still takes 20 hits.
+    tunnel.open_area(S, {x = 119, y = 44}, {x = 121, y = 46}, "stone-path")
+    wide_bore = S.create_entity({name = "ttc-mk3-bore", position = {120.5, 45.5}, direction = east, force = "player",
+      raise_built = true})
+    wide_bore.insert({name = "ttc-clay-drill-head", count = 3})
+    wide_bore.insert({name = "coal", count = 10})
+    -- A bore facing a wall that is half open already: half the hits.
+    tunnel.open_area(S, {x = 88, y = 44}, {x = 89, y = 45}, "stone-path")
+    tunnel.open(S, {{x = 90.5, y = 44.5}}, "stone-path")
+    half_bore = S.create_entity({name = "ttc-mk1-bore", position = {89, 45}, direction = east, force = "player",
+      raise_built = true})
+    half_bore.insert({name = "ttc-clay-drill-head", count = 2})
+    half_bore.insert({name = "coal", count = 5})
     -- Manholes: one over dug-out ground on floor 1, one over rock.
     tunnel.open_area(S, {x = 70, y = 44}, {x = 71, y = 45}, "stone-path")
     hole = game.surfaces.nauvis.create_entity({name = "ttc-manhole", position = {71, 45}, force = "player",
@@ -629,10 +763,27 @@ script.on_event(defines.events.on_tick, function(event)
     hot_mk2 = hot.create_entity({name = "ttc-mk2-bore", position = {6, -1}, direction = east, force = "player", raise_built = true})
     hot_mk2.insert({name = "ttc-carbide-drill-head", count = 1})
     hot_mk2.insert({name = "coal", count = 10})
-    hot_mk3 = hot.create_entity({name = "ttc-mk3-bore", position = {-5, -0.5}, direction = defines.direction.west, force = "player", raise_built = true})
+    hot_mk3 = hot.create_entity({name = "ttc-mk3-bore", position = {-4.5, -0.5}, direction = defines.direction.west, force = "player", raise_built = true})
     hot_mk3.insert({name = "ttc-carbide-drill-head", count = 1})
     hot_mk3.insert({name = "coal", count = 10})
     hot_mk3.set_fluid(1, {name = "ttc-coolant", amount = 200})
+    -- Uranium is only in its veins: a Mk3 facing one.
+    local uranium_tile
+    for x = -200, 200, 2 do
+      for y = -60, 60, 2 do
+        if not uranium_tile and remote.call("to-the-core", "vein_at", hot.index, {x = x, y = y}) == "uranium-ore" then
+          uranium_tile = {x = x, y = y}
+        end
+      end
+    end
+    if uranium_tile then
+      tunnel.open_area(hot, {x = uranium_tile.x - 3, y = uranium_tile.y - 1}, {x = uranium_tile.x - 1, y = uranium_tile.y + 1},
+        "red-desert-0")
+      uranium_bore = hot.create_entity({name = "ttc-mk3-bore", position = {uranium_tile.x - 1.5, uranium_tile.y + 0.5},
+        direction = east, force = "player", raise_built = true})
+      uranium_bore.insert({name = "ttc-carbide-drill-head", count = 1})
+      uranium_bore.insert({name = "coal", count = 10})
+    end
     -- Floor 4: break into an oil pocket.
     local deep = game.create_surface("ttc-floor-4", {width = 1, height = 1})
     for x = -200, 200 do
@@ -649,13 +800,13 @@ script.on_event(defines.events.on_tick, function(event)
     check("floor 4 has oil pockets", oil_tile ~= nil)
     if oil_tile then
       local body = {}
-      for dx = -2, -1 do
+      for dx = -3, -1 do
         for dy = -1, 1 do
           body[#body + 1] = {x = oil_tile.x + dx, y = oil_tile.y + dy}
         end
       end
       tunnel.open(deep, body, "dry-dirt")
-      oil_bore = deep.create_entity({name = "ttc-mk3-bore", position = {oil_tile.x - 1, oil_tile.y + 0.5}, direction = east,
+      oil_bore = deep.create_entity({name = "ttc-mk3-bore", position = {oil_tile.x - 1.5, oil_tile.y + 0.5}, direction = east,
         force = "player", raise_built = true})
       oil_bore.insert({name = "ttc-carbide-drill-head", count = 2})
       oil_bore.insert({name = "coal", count = 50})
@@ -669,20 +820,29 @@ script.on_event(defines.events.on_tick, function(event)
         cooled.get_output_inventory().clear()
       end
     end
-    -- The vein bore's stone, once its drops have been checked.
-    if V and V.valid and tick > 10301 then
+    -- The vein bore's output, counted up before it's cleared.
+    if V and V.valid then
+      for _, item in pairs(V.get_output_inventory().get_contents()) do
+        vein_drops[item.name] = (vein_drops[item.name] or 0) + item.count
+      end
       V.get_output_inventory().clear()
     end
   elseif tick == 11001 then
+    -- Hits alternate between the vein (stone) and the plain rock beside it
+    -- (floor 1's clay), so the drops mix.
+    check("each tile yields its own drops", (vein_drops.stone or 0) > 0 and (vein_drops["ttc-clay"] or 0) > 0,
+      vein_drops)
     check("a manhole goes over dug-out ground", hole and hole.valid)
-    -- Spilled next to the spot, or a little further if something stands there.
+    -- Spilled next to the spot, or further if the map put trees or water
+    -- there.
     local refunded = 0
-    for _, item in pairs(game.surfaces.nauvis.find_entities_filtered({type = "item-entity", position = {81, 45}, radius = 6})) do
+    for _, item in pairs(game.surfaces.nauvis.find_entities_filtered({type = "item-entity", position = {81, 45}, radius = 40})) do
       if item.stack.name == "ttc-manhole" then
         refunded = refunded + item.stack.count
       end
     end
-    check("a manhole over rock is refunded", not (stray_hole and stray_hole.valid) and refunded == 1, refunded)
+    local left = game.surfaces.nauvis.count_entities_filtered({name = "ttc-manhole", position = {81, 45}, radius = 2})
+    check("a manhole over rock is refunded", left == 0 and refunded == 1, {left = left, refunded = refunded})
     check("a turn signal turns the bore as it moves", T and T.direction == defines.direction.south
       and T.position.x == 62, T and {T.direction, T.position})
     local remaining = T and T.get_signal({type = "virtual", name = "signal-H"}, defines.wire_connector_id.circuit_red)
@@ -694,7 +854,7 @@ script.on_event(defines.events.on_tick, function(event)
       and tunnel.is_void(S, vein_tile), V and V.custom_status and V.custom_status.label)
     local label = V and V.custom_status and V.custom_status.label
     check("the bore keeps at the vein", V and V.position.x == vein_tile.x - 1
-      and label and label[1] == "ttc-status.digging-vein" and tonumber(label[2]) > 40 and label[3] == "800",
+      and label and label[1] == "ttc-status.digging-vein" and tonumber(label[2]) > 40 and label[3] == "420",
       serpent.line(label))
     check("a belt from below brings items up on their lane", lift and lift.valid
       and lift.get_transport_line(2).get_item_count("stone") == 1 and lift.get_transport_line(1).get_item_count() == 0,
@@ -709,11 +869,28 @@ script.on_event(defines.events.on_tick, function(event)
     check("breaking into an oil pocket leaves crude oil", oil and #oil == 1, oil and #oil)
   elseif tick == 10301 then
     local label = V and V.custom_status and V.custom_status.label
-    check("a vein takes 20 times the hits", label and label[1] == "ttc-status.digging-vein" and label[3] == "800",
+    local hardness = {}
+    for _, vein in ipairs(layer_configs[1].veins) do
+      hardness[vein.name] = vein.hardness
+    end
+    local face = 0
+    for y = 44, 46 do
+      local vein = remote.call("to-the-core", "vein_at", S.index, {x = 122.5, y = y + 0.5})
+      face = face + 20 * (vein and hardness[vein] or 1)
+    end
+    local wide = wide_bore and wide_bore.valid and wide_bore.custom_status and wide_bore.custom_status.label
+    check("a Mk3's tiles take as many hits as anyone's", wide and tonumber(wide[3]) == face, {wide, face})
+    -- 3x3, so it turns in place.
+    local turned = wide_bore and wide_bore.valid and wide_bore.rotate()
+    check("a Mk3 can turn", turned and wide_bore.direction == defines.direction.south, wide_bore and wide_bore.direction)
+    local half = half_bore and half_bore.valid and half_bore.custom_status and half_bore.custom_status.label
+    -- The solid half may be vein rock, depending on the map.
+    local expected = remote.call("to-the-core", "vein_at", S.index, {x = 90.5, y = 45.5}) and 400 or 20
+    check("a half-open face takes half the hits", half and tonumber(half[3]) == expected, {half, expected})
+    -- Half the face is vein (20 times 40 over 2 tiles), half plain rock.
+    check("a vein takes 20 times the hits", label and label[1] == "ttc-status.digging-vein" and label[3] == "420",
       serpent.line(label))
-    local output = V and V.get_output_inventory()
-    check("a vein yields its own drops", output and output.get_item_count("stone") > 0 and output.get_item_count("ttc-clay") == 0,
-      output and serpent.line(output.get_contents()))
+
   elseif tick > 9940 and tick < 21000 and tick % 60 == 0 then
     -- Each hit brings up a stone or two: keep the output clear.
     -- Dig on to floor 2 (400 hits) with reinforced heads: 120 hits each at

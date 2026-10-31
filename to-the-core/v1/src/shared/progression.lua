@@ -49,9 +49,13 @@ return {
   },
 
   triggers = {
-    -- Floor 2: iron. (Steam power and electronics keep their base triggers:
-    -- 50 iron plates and 10 copper plates.)
+    -- Floor 2: iron, but no copper. (Electronics keeps its base trigger:
+    -- 10 copper plates.)
     ["automation"] = {craft = "iron-plate", count = 50},
+    -- Power is no use without copper for the poles: it comes with the first
+    -- copper-rich rock (floor 3). Its pipes and offshore pump come with
+    -- floor 2 instead (prototypes/power.lua).
+    ["steam-power"] = {discover = "ttc-copper-rich-rock"},
     ["logistics"] = {craft = "transport-belt", count = 10},
     ["stone-wall"] = {craft = "stone-brick", count = 100},
     ["gate"] = {craft = "stone-wall", count = 100},
@@ -63,7 +67,8 @@ return {
     -- No floor 9 yet: landfill stays out of reach for now.
     ["landfill"] = {floor = 9},
     ["repair-pack"] = {craft = "electronic-circuit", count = 50},
-    ["lamp"] = {craft = "ttc-glass", count = 50},
+    -- Lamps take circuits: they come with them, not with the glass.
+    ["lamp"] = {craft = "electronic-circuit", count = 25},
     ["fast-inserter"] = {craft = "electronic-circuit", count = 100},
     ["circuit-network"] = {craft = "electronic-circuit", count = 200},
 
@@ -147,7 +152,8 @@ return {
     ["laser"] = {craft = "battery", count = 100},
     ["laser-turret"] = {craft = "battery", count = 300},
     ["low-density-structure"] = {craft = "steel-plate", count = 1000},
-    ["advanced-combinators"] = {craft = "arithmetic-combinator", count = 50},
+    -- The selector combinator takes advanced circuits.
+    ["advanced-combinators"] = {craft = "advanced-circuit", count = 50},
     ["braking-force-1"] = {craft = "locomotive", count = 5},
     ["braking-force-2"] = {craft = "locomotive", count = 20},
     ["efficiency-module-2"] = {craft = "processing-unit", count = 100},

@@ -99,9 +99,10 @@ data:extend({
   recipe("ttc-grind-gravel", "ttc-grinding", 3, "ttc-gravel", "ttc-sand"),
   recipe("ttc-grind-sand", "ttc-grinding", 9, "ttc-sand", "ttc-dust"),
   recipe("ttc-winnow-dust", "ttc-winnowing", 27, "ttc-dust", nil),
-
   machine("ttc-grinder", 2, {
     crafting_categories = {"ttc-grinding"},
+    -- Gravel and granules from metal-rich rock, room to spare.
+    result_inventory_size = 3,
     energy_usage = "90kW",
     energy_source = {
       type = "burner",
@@ -127,3 +128,26 @@ data:extend({
   building_recipe("ttc-grinder", {{"iron-plate", 10}, {"iron-gear-wheel", 10}, {"stone", 20}, {"stone-brick", 5}}),
   building_recipe("ttc-winnower", {{"wood", 30}, {"stone-brick", 10}, {"iron-gear-wheel", 10}, {"iron-plate", 5}})
 })
+
+-- Metal-rich rock grinds to gravel, shaking out granules of its metal.
+for _, metal in ipairs({"iron", "copper"}) do
+  data:extend({
+    {
+      type = "recipe",
+      name = "ttc-grind-" .. metal .. "-rich-rock",
+      categories = {"ttc-grinding"},
+      enabled = true,
+      hide_from_player_crafting = true,
+      allow_decomposition = false,
+      energy_required = 1,
+      ingredients = {{type = "item", name = "ttc-" .. metal .. "-rich-rock", amount = 1}},
+      results = {
+        {type = "item", name = "ttc-gravel", amount = 1},
+        {type = "item", name = "ttc-" .. metal .. "-granules", amount = 1, independent_probability = 0.8}
+      },
+      main_product = "ttc-gravel",
+      icon = graphics .. "icons/" .. metal .. "-rich-rock.png",
+      icon_size = 64
+    }
+  })
+end

@@ -59,6 +59,39 @@ make_item("ttc-glass", "glass", "z[ttc]-glass", 100, "raw-material")
 -- Ground-down rock (prototypes/grinding.lua).
 make_item("ttc-gravel", "gravel", "z[ttc]-gravel", 100, "raw-resource")
 make_item("ttc-dust", "dust", "z[ttc]-dust", 200, "raw-resource")
+-- Metal-rich rock from the walls (iron from floor 2, copper from floor 3),
+-- sorted by hand or ground (prototypes/grinding.lua); the granules smelt 4:1
+-- to plates. Icons from v1/tools/ore_gfx.py.
+for index, metal in ipairs({"iron", "copper"}) do
+  local rock = "ttc-" .. metal .. "-rich-rock"
+  make_item(rock, metal .. "-rich-rock", "z[ttc]-rich-rock-" .. index, 50, "raw-resource")
+  make_item("ttc-" .. metal .. "-granules", metal .. "-granules", "z[ttc]-granules-" .. index, 100, "raw-resource")
+  data:extend({
+    {
+      type = "recipe",
+      name = "ttc-sort-" .. metal .. "-rich-rock",
+      -- Only by hand: nothing but the player crafts in this category.
+      categories = {"hand-crafting"},
+      enabled = false,
+      energy_required = 0.5,
+      ingredients = {{type = "item", name = rock, amount = 1}},
+      -- One roll per rock: 20% ore (as much metal as grinding gets out), 2%
+      -- coal, otherwise plain stone.
+      results = {
+        {type = "item", name = metal .. "-ore", amount = 1, shared_probability = {min = 0, max = 0.2}},
+        {type = "item", name = "coal", amount = 1, shared_probability = {min = 0.2, max = 0.22}},
+        {type = "item", name = "stone", amount = 1, shared_probability = {min = 0.22, max = 1}}
+      },
+      icon = icons .. metal .. "-rich-rock.png",
+      icon_size = 64,
+      subgroup = "raw-resource",
+      order = "z[ttc]-rich-rock-" .. index .. "-a[sort]",
+      allow_decomposition = false
+    }
+  })
+  make_recipe("ttc-" .. metal .. "-plate-from-granules", false, 3.2,
+    {{"ttc-" .. metal .. "-granules", 4}}, {{metal .. "-plate", 1}}, "smelting")
+end
 
 make_recipe("ttc-wooden-drill-head", true, 1,
   {{"wood", 2}, {"stone", 1}}, {{"ttc-wooden-drill-head", 1}})
@@ -70,7 +103,7 @@ make_recipe("ttc-clay-drill-head", false, 3.2,
 make_recipe("ttc-glass", false, 3.2,
   {{"ttc-sand", 2}}, {{"ttc-glass", 1}}, "smelting")
 make_recipe("ttc-iron-drill-head", false, 2,
-  {{"iron-plate", 4}}, {{"ttc-iron-drill-head", 1}})
+  {{"iron-gear-wheel", 1}, {"iron-plate", 2}}, {{"ttc-iron-drill-head", 1}})
 make_recipe("ttc-reinforced-drill-head", false, 3,
   {{"steel-plate", 3}, {"copper-plate", 2}}, {{"ttc-reinforced-drill-head", 1}})
 make_recipe("ttc-hardened-drill-head", false, 5,

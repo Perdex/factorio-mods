@@ -1,10 +1,11 @@
-"""Render the tunnel bores: Mk1 (wood and clay bricks), Mk2 (steel, with belt
-ports) and Mk3 (cooled, with a water inlet). 2x2 body, 4 directions, 8-frame cutter animation.
+"""Render the tunnel bores: Mk1 (wood and clay bricks) and Mk2 (steel, with
+belt ports), 2x2, and Mk3 (cooled, with a coolant inlet), 3x3. 4 directions,
+8-frame cutter animation.
 
 Drawn facing north at 4x supersampling, then rotated for the other directions.
-Each frame is 256x256 px (64 px per tile, drawn at scale 0.5), i.e. 4x4 tiles
-centred on the entity, so the cutter head can reach past the 2x2 body into the
-wall in front. Output: <tier>-bore-<dir>.png (8 frames in a row),
+Each frame is the body plus a tile on every side (64 px per tile, drawn at
+scale 0.5), so the cutter head can reach past the body into the wall in
+front. Output: <tier>-bore-<dir>.png (8 frames in a row),
 <tier>-bore-<dir>-shadow.png and <tier>-bore-icon.png into the given directory.
 
 Usage: python3 bore_gfx.py <output-dir>
@@ -18,8 +19,9 @@ out = sys.argv[1]
 SS = 4
 FRAME = 256
 S = FRAME * SS
-# Body-local coordinates: (0, 0)..(128, 128) is the 2x2 footprint.
-ORIGIN = (FRAME - 128) / 2
+# Body-local coordinates: (0, 0) is the body's front-left corner, one tile in
+# from the frame's; 64 px per tile.
+ORIGIN = 64
 FRAMES = 8
 
 
@@ -63,16 +65,16 @@ def hull_layer(img, draw):
 
 
 def cooled_hull_layer(img, draw):
-    """Mk3: 3 tiles wide (192 px body), coolant tank, water inlet in the
+    """Mk3: 3x3 tiles (192 px body), coolant tank, coolant inlet in the
     middle of its back between the belt ports."""
     # tracks
     for x0 in (4, 172):
-        draw.rounded_rectangle([px(x0), px(12), px(x0 + 16), px(124)], radius=4 * SS, fill=(38, 38, 40))
-        for y in range(14, 122, 7):
+        draw.rounded_rectangle([px(x0), px(12), px(x0 + 16), px(188)], radius=4 * SS, fill=(38, 38, 40))
+        for y in range(14, 186, 7):
             draw.rectangle([px(x0 + 1), px(y), px(x0 + 15), px(y + 3)], fill=(70, 70, 72))
     # body
-    draw.rounded_rectangle([px(16), px(16), px(176), px(122)], radius=8 * SS, fill=(70, 82, 100), outline=(30, 30, 32), width=2 * SS)
-    draw.rounded_rectangle([px(22), px(30), px(170), px(98)], radius=6 * SS, fill=(84, 98, 120))
+    draw.rounded_rectangle([px(16), px(16), px(176), px(186)], radius=8 * SS, fill=(70, 82, 100), outline=(30, 30, 32), width=2 * SS)
+    draw.rounded_rectangle([px(22), px(30), px(170), px(158)], radius=6 * SS, fill=(84, 98, 120))
     band = Image.new("RGBA", (160 * SS, 12 * SS), (230, 180, 40, 255))
     band_draw = ImageDraw.Draw(band)
     for i in range(-2, 20):
@@ -84,18 +86,18 @@ def cooled_hull_layer(img, draw):
     for cx in (52, 140):
         draw.rectangle([px(cx - 10), px(4), px(cx + 10), px(30)], fill=(64, 66, 70), outline=(30, 30, 32), width=2 * SS)
     # coolant tank across the middle
-    draw.rounded_rectangle([px(40), px(40), px(152), px(88)], radius=12 * SS, fill=(70, 150, 190), outline=(24, 50, 70), width=2 * SS)
-    draw.rounded_rectangle([px(48), px(46), px(70), px(82)], radius=5 * SS, fill=(150, 210, 235))
-    for y in (52, 64, 76):
+    draw.rounded_rectangle([px(40), px(52), px(152), px(140)], radius=14 * SS, fill=(70, 150, 190), outline=(24, 50, 70), width=2 * SS)
+    draw.rounded_rectangle([px(48), px(60), px(70), px(132)], radius=5 * SS, fill=(150, 210, 235))
+    for y in (74, 96, 118):
         draw.line([px(42), px(y), px(150), px(y)], fill=(40, 90, 120), width=SS)
-    # rear: supply port (left), water inlet (middle), output port (right)
-    draw.rounded_rectangle([px(24), px(100), px(60), px(118)], radius=3 * SS, fill=(60, 130, 190), outline=(25, 45, 70), width=2 * SS)
-    draw.rounded_rectangle([px(132), px(100), px(168), px(118)], radius=3 * SS, fill=(70, 160, 90), outline=(25, 60, 35), width=2 * SS)
-    draw.polygon([pt(42, 103), pt(35, 115), pt(49, 115)], fill=(210, 230, 250))
-    draw.polygon([pt(150, 115), pt(143, 103), pt(157, 103)], fill=(215, 245, 220))
-    draw.rectangle([px(84), px(96), px(108), px(128)], fill=(110, 114, 120), outline=(40, 42, 46), width=2 * SS)
-    draw.rectangle([px(80), px(122), px(112), px(128)], fill=(80, 84, 90))
-    draw.ellipse([px(90), px(102), px(102), px(114)], fill=(80, 150, 190))
+    # rear: supply port (left), coolant inlet (middle), output port (right)
+    draw.rounded_rectangle([px(24), px(164), px(60), px(182)], radius=3 * SS, fill=(60, 130, 190), outline=(25, 45, 70), width=2 * SS)
+    draw.rounded_rectangle([px(132), px(164), px(168), px(182)], radius=3 * SS, fill=(70, 160, 90), outline=(25, 60, 35), width=2 * SS)
+    draw.polygon([pt(42, 167), pt(35, 179), pt(49, 179)], fill=(210, 230, 250))
+    draw.polygon([pt(150, 179), pt(143, 167), pt(157, 167)], fill=(215, 245, 220))
+    draw.rectangle([px(84), px(160), px(108), px(192)], fill=(110, 114, 120), outline=(40, 42, 46), width=2 * SS)
+    draw.rectangle([px(80), px(186), px(112), px(192)], fill=(80, 84, 90))
+    draw.ellipse([px(90), px(166), px(102), px(178)], fill=(80, 150, 190))
 
 
 def wooden_hull_layer(img, draw):
@@ -144,16 +146,16 @@ def cutter_layer(draw, frame, cx=64):
     draw.ellipse([px(cx - 7), px(cy - 7), px(cx + 7), px(cy + 7)], fill=(230, 180, 40), outline=(40, 40, 40), width=2 * SS)
 
 
-def frame_image(frame, hull, width=2):
-    """A frame (width + 2) tiles across and 4 along; wide bores get one cutter
-    per outer tile."""
-    across = (width + 2) * 64
-    img = Image.new("RGBA", (across * SS, S), (0, 0, 0, 0))
+def frame_image(frame, hull, width=2, length=2):
+    """A frame (width + 2) tiles across and (length + 2) along; wide bores
+    get one cutter per outer tile."""
+    across, along = (width + 2) * 64, (length + 2) * 64
+    img = Image.new("RGBA", (across * SS, along * SS), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     hull(img, draw)
     for cx in ((64,) if width == 2 else (52, 140)):
         cutter_layer(draw, frame, cx)
-    return img.resize((across, FRAME), Image.LANCZOS)
+    return img.resize((across, along), Image.LANCZOS)
 
 
 def shadow_image(img):
@@ -165,8 +167,9 @@ def shadow_image(img):
     return shadow
 
 
-for tier, hull, width in (("mk1", wooden_hull_layer, 2), ("mk2", hull_layer, 2), ("mk3", cooled_hull_layer, 3)):
-    frames = [frame_image(f, hull, width) for f in range(FRAMES)]
+for tier, hull, width, length in (("mk1", wooden_hull_layer, 2, 2), ("mk2", hull_layer, 2, 2),
+                                  ("mk3", cooled_hull_layer, 3, 3)):
+    frames = [frame_image(f, hull, width, length) for f in range(FRAMES)]
     for name, angle in (("north", 0), ("east", -90), ("south", 180), ("west", 90)):
         turned = [f.rotate(angle, expand=True) for f in frames]
         w, h = turned[0].size

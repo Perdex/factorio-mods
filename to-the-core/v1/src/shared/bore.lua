@@ -3,14 +3,16 @@ local bore = {
   -- Mk1 (wood and clay bricks) only digs; Mk2 also lays its own supply and
   -- output belt lanes and has the loaders that connect them; Mk3 is much
   -- faster but needs bore coolant (`coolant_fluid`), `coolant` units a second
-  -- while it digs.
+  -- while it digs. `width` across the digging direction and `length` along
+  -- it, in tiles (2 each by default).
   tiers = {
     ["ttc-mk1-bore"] = {sprite = "mk1", speed = 1, energy = "150kW", lays_belts = false},
     ["ttc-mk2-bore"] = {sprite = "mk2", speed = 2, energy = "300kW", lays_belts = true},
-    -- 3 wide: its coolant inlet sits in the middle of its back, between the
-    -- belt lanes, and it lays a pipe there as it advances.
+    -- 3x3, so it can turn in place: its coolant inlet sits in the middle of
+    -- its back, between the belt lanes, and it lays a pipe there as it
+    -- advances.
     ["ttc-mk3-bore"] = {sprite = "mk3", speed = 5, energy = "750kW", lays_belts = true, coolant = 100,
-      width = 3, lays_pipes = true}
+      width = 3, length = 3, lays_pipes = true}
   },
   recipe_category = "ttc-dig",
   -- Mostly water, with a little petroleum gas or lubricant and dust
@@ -46,7 +48,7 @@ local bore = {
     wooden = {item = "ttc-wooden-drill-head", durability = 10, hit_time = 3},
     -- Unfired clay crumbles after a single hit; firing it is worth the wait.
     unfired_clay = {item = "ttc-unfired-clay-drill-head", durability = 1, hit_time = 1, own_description = true},
-    clay = {item = "ttc-clay-drill-head", durability = 20, hit_time = 1},
+    clay = {item = "ttc-clay-drill-head", durability = 25, hit_time = 1},
     iron = {item = "ttc-iron-drill-head", durability = 80, hit_time = 1 / 3},
     reinforced = {item = "ttc-reinforced-drill-head", durability = 500, hit_time = 1 / 9},
     hardened = {item = "ttc-hardened-drill-head", durability = 3000, hit_time = 1 / 27},

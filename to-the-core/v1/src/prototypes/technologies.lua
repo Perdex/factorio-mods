@@ -13,17 +13,23 @@ local technologies = {
   {
     name = "ttc-reach-floor-2",
     icon = icons .. "grinder.png",
-    recipes = {"ttc-grinder", "ttc-winnower"}
+    -- Iron heads come with the iron, but floor 2's walls don't pay for them:
+    -- worth it for finding veins, not for digging out room.
+    recipes = {"ttc-grinder", "ttc-winnower", "ttc-sort-iron-rich-rock", "ttc-iron-plate-from-granules",
+      "ttc-iron-drill-head"}
   },
   {
     name = "ttc-iron-discovery",
     icon = "__base__/graphics/icons/iron-ore.png",
-    recipes = {"ttc-iron-drill-head", "ttc-mk2-bore"}
+    recipes = {"ttc-mk2-bore"}
   },
+  -- Drill heads come floor by floor: clay heads from floor 1, iron heads from
+  -- floor 2 (where clay heads from floor 1 still do most of the digging),
+  -- reinforced from floor 4, hardened from floor 5 and carbide from floor 6.
   {
     name = "ttc-reach-floor-3",
     icon = icons .. "core-drill.png",
-    recipes = {}
+    recipes = {"ttc-sort-copper-rich-rock", "ttc-copper-plate-from-granules"}
   },
   {
     -- Researched halfway down the shaft to floor 4 (`unlocks` in the shaft
@@ -34,20 +40,19 @@ local technologies = {
   },
   {
     name = "ttc-reach-floor-4",
-    icon = icons .. "power-connector.png",
-    recipes = {"ttc-power-connector"}
+    icon = icons .. "reinforced-drill-head.png",
+    recipes = {"ttc-power-connector", "ttc-reinforced-drill-head"}
   },
   {
     name = "ttc-reach-floor-5",
-    icon = icons .. "carbide-drill-head.png",
-    recipes = {"ttc-carbide-drill-head"}
+    icon = icons .. "hardened-drill-head.png",
+    recipes = {"ttc-hardened-drill-head"}
   },
   {
-    name = "ttc-reinforced-drill-head",
-    icon = icons .. "reinforced-drill-head.png",
-    recipes = {"ttc-reinforced-drill-head"},
-    -- Unlocked by the game's own trigger once a few steel plates are made.
-    trigger = {type = "craft-item", item = "steel-plate", count = 10}
+    -- There is no floor 6 yet: out of reach for now.
+    name = "ttc-reach-floor-6",
+    icon = icons .. "carbide-drill-head.png",
+    recipes = {"ttc-carbide-drill-head"}
   }
 }
 
@@ -85,5 +90,3 @@ for technology, recipes in pairs({
   end
 end
 
--- Hardened drill heads need plastic, so they come with it.
-table.insert(data.raw.technology["plastics"].effects, {type = "unlock-recipe", recipe = "ttc-hardened-drill-head"})

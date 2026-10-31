@@ -1,9 +1,9 @@
 -- Tunnel bore: a burner furnace whose dig recipe wears out drill heads while
 -- burning fuel; the inserted head picks the recipe (runtime/wear.lua). Each
--- hit brings out some of the floor's rock. One craft is one head's whole life: its hits land on the
--- wall ahead as the craft progresses, and after the layer's hits_per_tile hits
--- the bore breaks through and advances one tile (mid-craft if need be; whole
--- hits left over don't carry to the next tile),
+-- hit brings out some of the rock it lands on. One craft is one head's whole
+-- life: its hits land on the wall ahead as the craft progresses, one tile at
+-- a time in turn (see face()), and once nothing is left standing the bore
+-- advances one tile (mid-craft if need be),
 -- opening the tunnel in front, laying a supply lane and an output lane behind
 -- (from belts it pulls off the supply lane, if it has any), and moving the
 -- hidden loaders that connect those lanes to the bore.
@@ -60,11 +60,17 @@ local function width_of(entity)
   return bore_config.tiers[entity.name].width or 2
 end
 
+-- From the bore's centre to the middle of the tiles just past its front (or
+-- back): half its length, plus half a tile.
+local function reach_of(entity)
+  return (bore_config.tiers[entity.name].length or 2) / 2 + 0.5
+end
+
 local function front_tiles(entity)
   local width = width_of(entity)
   local tiles = {}
   for i = 0, width - 1 do
-    tiles[#tiles + 1] = relative(entity, 1.5, i - (width - 1) / 2)
+    tiles[#tiles + 1] = relative(entity, reach_of(entity), i - (width - 1) / 2)
   end
   return tiles
 end
@@ -72,7 +78,8 @@ end
 -- Input loader on the rear left, output loader on the rear right.
 local function rear_tiles(entity)
   local half = (width_of(entity) - 1) / 2
-  return relative(entity, -1.5, -half), relative(entity, -1.5, half), relative(entity, -1.5, 0)
+  local back = -reach_of(entity)
+  return relative(entity, back, -half), relative(entity, back, half), relative(entity, back, 0)
 end
 
 -- Stops the bore with a red status, or (status_key nil) lets it run.
@@ -356,38 +363,58 @@ local function front_blocker(entity, layer)
   end
 end
 
--- The rock ahead, tile by tile: each solid tile in front of the bore, the
--- hits it takes to break (more in a vein) and what each hit brings out.
-local function rock_ahead(entity, layer)
-  local rock = {}
-  for _, position in ipairs(front_tiles(entity)) do
-    if tunnel.is_void(entity.surface, position) then
-      local vein = veins.at(entity.surface, position)
-      rock[#rock + 1] = {
-        position = position,
-        vein = vein,
-        needed = layer.hits_per_tile * (vein and vein.hardness or 1),
-        drops = vein and vein.drops or layer.drops
-      }
-    end
-  end
-  return rock
+-- Hits dealt to wall tiles not yet broken, by surface and tile, so a tile
+-- keeps its progress whichever bore works on it (or after turning).
+local function tile_hits(surface)
+  storage.ttc.wall_hits = storage.ttc.wall_hits or {}
+  storage.ttc.wall_hits[surface.index] = storage.ttc.wall_hits[surface.index] or {}
+  return storage.ttc.wall_hits[surface.index]
 end
 
--- Every hit lands on the whole face, so softer tiles give way first and the
--- bore advances once the hardest one breaks. Returns the hits that takes, the
--- hardest tile (a vein wins a tie) and the rock ahead. One hit is enough
--- where the way is already open.
-local function hits_needed(entity, layer)
-  local rock = rock_ahead(entity, layer)
-  local hardest
-  for _, tile in ipairs(rock) do
-    if not hardest or tile.needed > hardest.needed
-      or (tile.needed == hardest.needed and tile.vein and not hardest.vein) then
-      hardest = tile
+local function tile_key(position)
+  return math.floor(position.x) .. "," .. math.floor(position.y)
+end
+
+-- The wall in front of the bore, tile by tile. Each hit lands on one tile, in
+-- turn, and a tile takes the floor's hits per tile (times a vein's hardness)
+-- whatever the bore, so a face that is half open takes half the hits and a
+-- wider bore's face more. Returns the solid tiles
+-- (with their front index, needed hits, hits so far and drops), the hits
+-- left on the face, and the tile with the most left (a vein wins a tie).
+local function face(entity, layer)
+  local surface = entity.surface
+  local dealt = tile_hits(surface)
+  local rock, remaining, hardest = {}, 0, nil
+  for index, position in ipairs(front_tiles(entity)) do
+    if tunnel.is_void(surface, position) then
+      local vein = veins.at(surface, position)
+      local key = tile_key(position)
+      local tile = {
+        index = index,
+        position = position,
+        key = key,
+        vein = vein,
+        needed = layer.hits_per_tile * (vein and vein.hardness or 1),
+        hits = dealt[key] or 0,
+        drops = vein and vein.drops or layer.drops
+      }
+      tile.left = math.max(0, math.ceil(tile.needed - tile.hits - 0.001))
+      remaining = remaining + tile.left
+      rock[#rock + 1] = tile
+      if not hardest or tile.left > hardest.left or (tile.left == hardest.left and vein and not hardest.vein) then
+        hardest = tile
+      end
     end
   end
-  return hardest and hardest.needed or 1, hardest, rock
+  return rock, remaining, hardest
+end
+
+-- The face's progress as hits dealt and hits needed since the bore last
+-- moved. One hit is enough where the way is already open.
+local function face_progress(state, layer)
+  local _, remaining, hardest = face(state.entity, layer)
+  local hits = state.hits
+  return hits, hits + math.max(remaining, 1), hardest
 end
 
 -- Chips of rock flying off the wall ahead, one burst per hit.
@@ -433,6 +460,10 @@ end
 -- Opens the rock at positions. Breaking into a vein that holds a resource (an
 -- oil pocket) leaves it there, once per vein.
 local function break_rock(surface, positions, layer)
+  local dealt = tile_hits(surface)
+  for _, position in ipairs(positions) do
+    dealt[tile_key(position)] = nil
+  end
   local springs = {}
   for _, position in ipairs(positions) do
     if tunnel.is_void(surface, position) then
@@ -529,11 +560,12 @@ function bore.unregister(entity, buffer)
   end
 end
 
--- A turned bore faces a new wall and starts on it from scratch.
+-- A turned bore faces a new wall; tiles it already hit keep their progress.
 function bore.on_rotated(entity)
   local state = bores()[entity.unit_number]
   if state then
     state.hits = 0
+    state.next_tile = 0
     destroy_loaders(state)
     attach_loaders(state)
   end
@@ -541,9 +573,8 @@ end
 
 -- While running, shows wall progress in place of the plain "Working" status.
 local function progress_label(state, layer)
-  local needed, hardest = hits_needed(state.entity, layer)
+  local hits, needed, hardest = face_progress(state, layer)
   local vein = hardest and hardest.vein
-  local hits = math.floor(state.hits)
   local vein_name = vein and {"ttc-vein-name." .. vein.name}
   if state.lays_belts then
     local stock, limit = state.belt_stock, bore_config.belt_stock_limit
@@ -638,9 +669,8 @@ local function show_wall(player, entity)
     frame.bar.value = 0
     return
   end
-  local needed, hardest = hits_needed(entity, layer)
+  local hits, needed, hardest = face_progress(state, layer)
   local vein = hardest and hardest.vein
-  local hits = math.floor(state.hits)
   row.vein.visible = vein ~= nil
   if vein then
     row.vein.sprite = veins.sprite(vein)
@@ -648,7 +678,7 @@ local function show_wall(player, entity)
   else
     row.wall.caption = {"ttc.bore-wall", hits, needed}
   end
-  frame.bar.value = math.min(1, state.hits / needed)
+  frame.bar.value = math.min(1, hits / needed)
 end
 
 function bore.on_gui_opened(event)
@@ -686,7 +716,8 @@ function bore.on_gui_changed(event)
   end
   local layer = layers_by_surface[state.entity.surface.name]
   if layer then
-    output_hits(state, math.ceil(hits_needed(state.entity, layer) - state.hits))
+    local hits, needed = face_progress(state, layer)
+    output_hits(state, needed - hits)
   end
 end
 
@@ -703,6 +734,64 @@ local function refresh_wall_panels()
     local opened = player.opened
     if player.opened_gui_type == defines.gui_type.entity and opened and opened.valid and bore.handles(opened) then
       show_wall(player, opened)
+    end
+  end
+end
+
+-- Moves the bore on once nothing in front of it is left standing, then lets
+-- turn signals turn it (a Mk3 only where its new footprint fits). Returns
+-- false if it could not move.
+local function step(state, layer)
+  local entity = state.entity
+  if not advance(state, layer) then
+    return false
+  end
+  state.hits = 0
+  state.next_tile = 0
+  pulse_moved(state)
+  local turn = turn_wanted(entity)
+  if turn ~= 0 and entity.rotate({reverse = turn < 0}) then
+    bore.on_rotated(entity)
+  end
+  return true
+end
+
+-- Deals `count` hits. Each lands on the next solid tile in front, in turn,
+-- skipping open ones, and brings out that tile's drops; a tile breaks once it
+-- has taken its needed hits, and the bore steps forward when none is left.
+-- On open ground every hit is a step. Returns a status key if blocked.
+local function dig(state, layer, count)
+  local entity = state.entity
+  for _ = 1, count do
+    local blocker = front_blocker(entity, layer)
+    if blocker then
+      return blocker
+    end
+    local rock = face(entity, layer)
+    if #rock == 0 then
+      if not step(state, layer) then
+        return "front-blocked"
+      end
+    else
+      -- The next solid tile after the last one hit.
+      local target = rock[1]
+      for _, tile in ipairs(rock) do
+        if tile.index > (state.next_tile or 0) then
+          target = tile
+          break
+        end
+      end
+      state.next_tile = target.index
+      local dealt = tile_hits(entity.surface)
+      dealt[target.key] = target.hits + 1
+      state.hits = state.hits + 1
+      wear.roll(state, target.drops, 1)
+      if target.hits + 1 >= target.needed - 0.001 then
+        break_rock(entity.surface, {target.position}, layer)
+        if #face(entity, layer) == 0 and not step(state, layer) then
+          return "front-blocked"
+        end
+      end
     end
   end
 end
@@ -730,17 +819,14 @@ local function update(state)
     return
   end
 
-  -- Each hit on the wall brings out some of the floor's rock.
   local dealt, whole = wear.update(state, entity, bore_config.recipe_heads)
   if coolant and dealt > 0 then
     entity.remove_fluid(1, per_update)
   end
-  state.hits = state.hits + dealt
   if whole > 0 then
     hit_effect(entity)
-    local _, hardest = hits_needed(entity, layer)
-    wear.roll(state, hardest and hardest.drops or layer.drops, whole)
   end
+  local blocked = dig(state, layer, whole)
   local delivered_all, delivered = wear.deliver(state, entity)
   if delivered then
     unlock_discoveries(entity, layer)
@@ -750,45 +836,20 @@ local function update(state)
     return
   end
   collect_belts(state)
-
+  if blocked then
+    set_status(state, blocked)
+    return
+  end
   -- Also pauses digging before a hit lands on a tile the bore can't enter.
-  while true do
-    local blocker = front_blocker(entity, layer)
-    if blocker then
-      set_status(state, blocker)
-      return
-    end
-    -- With a little slack: summed fractional progress drifts a hair short.
-    local needed, _, rock = hits_needed(entity, layer)
-    if state.hits + 0.001 < needed then
-      local broken = {}
-      for _, tile in ipairs(rock) do
-        if state.hits + 0.001 >= tile.needed then
-          broken[#broken + 1] = tile.position
-        end
-      end
-      if #broken > 0 then
-        break_rock(entity.surface, broken, layer)
-      end
-      break
-    end
-    if not advance(state, layer) then
-      set_status(state, "front-blocked")
-      return
-    end
-    -- Only the part of a hit already under way carries over.
-    state.hits = math.max(0, state.hits - needed) % 1
-    pulse_moved(state)
-    -- Turn signals turn it as it moves (a Mk3 only where its new footprint
-    -- fits), facing a new wall.
-    local turn = turn_wanted(entity)
-    if turn ~= 0 and entity.rotate({reverse = turn < 0}) then
-      bore.on_rotated(entity)
-    end
+  local blocker = front_blocker(entity, layer)
+  if blocker then
+    set_status(state, blocker)
+    return
   end
 
   attach_loaders(state)
-  output_hits(state, math.ceil(hits_needed(entity, layer) - state.hits))
+  local hits, needed = face_progress(state, layer)
+  output_hits(state, needed - hits)
   set_status(state, nil)
   show_progress(state, layer)
 end

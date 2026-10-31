@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Locale check: dumps the prototypes with and without the mod and reports
-# every name or description that would show as an unknown key
-# (tests/check_locale.py). Uses its own write-data directories, so the normal
-# Factorio profile is untouched.
+# Static checks on the mod's prototypes, without running a game. Dumps the
+# prototypes with and without the mod, then reports:
+# - every name or description that would show as an unknown key
+#   (tests/check_locale.py);
+# - every recipe that unlocks before its ingredients can be had
+#   (tests/check_unlocks.py).
+# Uses its own write-data directories, so the normal Factorio profile is
+# untouched.
 #
-# Usage: tests/locale.sh   (FACTORIO_BIN overrides the game binary)
+# Usage: tests/static.sh   (FACTORIO_BIN overrides the game binary)
 set -euo pipefail
 factorio="${FACTORIO_BIN:-/mnt/games/SteamLibrary/steamapps/common/Factorio/bin/x64/factorio}"
 game_data="$(cd "$(dirname "$factorio")/../../data" && pwd)"
@@ -27,6 +31,7 @@ JSON
 dump "$work/mod" true
 dump "$work/base" false
 
+status=0
 lua "$v1/tests/locale_keys.lua" "$v1/src" > "$work/runtime-keys.txt"
 python3 -I "$v1/tests/check_locale.py" \
   --dump "$work/mod/write/script-output/data-raw-dump.json" \
@@ -34,4 +39,10 @@ python3 -I "$v1/tests/check_locale.py" \
   --base-locale "$game_data/core/locale/en/core.cfg" "$game_data/base/locale/en/base.cfg" \
   --mod-locale "$v1"/src/locale/en/*.cfg \
   --sources "$v1/src" \
-  --runtime-keys "$work/runtime-keys.txt"
+  --runtime-keys "$work/runtime-keys.txt" || status=1
+
+lua "$v1/tests/progression_export.lua" "$v1/src" > "$work/config.json"
+python3 -I "$v1/tests/check_unlocks.py" \
+  --dump "$work/mod/write/script-output/data-raw-dump.json" \
+  --config "$work/config.json" || status=1
+exit "$status"

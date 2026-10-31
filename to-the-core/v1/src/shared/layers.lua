@@ -4,13 +4,22 @@
 -- shaft: the core drill's dig from the floor above (the starting surface for
 --   floor 1) down into this one: `hits` drill head hits deep, each bringing up
 --   `drops` like a tunnel bore's. Any drill head works; better ones dig faster.
+--   `mix` instead of `drops`: the floor above's and this floor's wall drops,
+--   half each, scaled to `mix` items a hit (worked out at the end of this
+--   file). Only what the floor above's walls also hold: nothing new turns up
+--   before its floor is reached.
 --   `unlocks`: technologies researched once a shaft is `progress` (0..1) of the
 --   way down, with a `message` to the force.
 -- reached_unlocks: technologies researched when a shaft first reaches the layer.
--- hits_per_tile: wall hardness, the hits a tunnel bore needs to break through
---   one tile. Meant to grow steeply with depth.
+-- hits_per_tile: wall hardness, the hits it takes to break one tile, whatever
+--   the bore (a vein's tile takes `hardness` times as many). Meant to grow
+--   steeply with depth.
 -- drops: wall material per tunnel bore hit, as chance (0..1) and inclusive
---   amounts.
+--   amounts. Rolled once per hit, for the tile the hit lands on; a bore's
+--   hits take turns over the tiles in front of it (runtime/bore.lua). So a
+--   tile always takes the same hits and gives the same drops; the "per step"
+--   totals below are for a 2-wide bore's step (two tiles), and a Mk3's step
+--   (three tiles) takes and gives 1.5 times as much.
 -- unlocks: technologies researched when a bore on this layer first outputs an item.
 -- veins: patches of harder rock hidden in the walls, each `hardness` times the
 --   floor's hits per tile, yielding `drops` per hit instead of the floor's.
@@ -21,7 +30,12 @@
 --   `resource`: breaking into the vein leaves that resource entity (once per
 --   vein), e.g. crude oil for pumpjacks.
 -- needs_coolant: too hot for tunnel bores without coolant (Mk3).
-return {
+--
+-- Coal: a bore burns the same per hit whatever its tier, by head: 450 kJ
+-- (wooden), 150 kJ (clay), 50 kJ (iron); coal holds 4 MJ. Floors 1 and 2 are
+-- dug with clay heads (0.0375 coal a hit) and give 0.034 coal a hit back,
+-- about 90%: surface rocks top it up now and then until coal veins turn up.
+local layers = {
   {
     name = "floor_1",
     surface_name = "ttc-floor-1",
@@ -35,14 +49,17 @@ return {
       }
     },
     reached_unlocks = {"ttc-reach-floor-1"},
-    -- Clay: two clay heads and 80 s per tile, or four wooden heads.
-    hits_per_tile = 40,
-    -- Per tile: ~20 clay, ~12 stone (rubble to get rid of), ~1 coal for fuel
-    -- and the odd bit of sand.
+    -- Clay: 20 hits a tile, so a 2-wide step takes 1.6 clay heads and 40 s in
+    -- a Mk1, or four wooden heads.
+    hits_per_tile = 20,
+    -- Per step: ~12 clay, ~12 stone (rubble to get rid of), ~1.4 coal (about
+    -- 90% of the clay heads' fuel) and the odd bit of sand.
     drops = {
-      {name = "ttc-clay", chance = 0.5, minimum = 1, maximum = 1},
+      -- Clay heads use 0.2 clay a hit, so a third of the heads made from
+      -- plain clay walls can be sent off; clay veins (1.5 a hit) give 87%.
+      {name = "ttc-clay", chance = 0.3, minimum = 1, maximum = 1},
       {name = "stone", chance = 0.3, minimum = 1, maximum = 1},
-      {name = "coal", chance = 0.025, minimum = 1, maximum = 1},
+      {name = "coal", chance = 0.034, minimum = 1, maximum = 1},
       {name = "ttc-sand", chance = 0.05, minimum = 1, maximum = 1}
     },
     -- Solid stone: nothing to gain, just rock to dig around (or through).
@@ -58,35 +75,38 @@ return {
     name = "floor_2",
     surface_name = "ttc-floor-2",
     tunnel_tile = "dirt-4",
-    -- 20 clay heads' worth.
+    -- 16 clay heads' worth. 1-2 pieces a hit, mostly stone and a fifth of
+    -- floor 2's iron-rich rock (~120 of it), which can only be sorted once
+    -- floor 2 is reached.
     shaft = {
       hits = 400,
       drops = {
-        {name = "stone", chance = 1, minimum = 1, maximum = 2}
+        {name = "stone", chance = 0.8, minimum = 1, maximum = 2},
+        {name = "ttc-iron-rich-rock", chance = 0.2, minimum = 1, maximum = 2}
       }
     },
     reached_unlocks = {"ttc-reach-floor-2"},
-    -- Stone, four times harder than clay. Iron is found here.
-    hits_per_tile = 160,
-    -- Per tile: ~40 stone, ~8 iron ore, ~3 coal. A tile takes two iron heads
-    -- (8 plates), so iron digging just about keeps itself going.
+    -- Stone, four times harder than clay, soft enough to go looking for the
+    -- coal veins. Iron is found here.
+    hits_per_tile = 80,
+    -- Per step: 40 iron-rich rock and ~5 coal (about 90% of the clay heads'
+    -- fuel). No copper. Sorted by hand, the rock gives ~8 iron ore; ground,
+    -- ~32 iron granules (4 make a plate):
+    -- 8 iron plates, just what the 2 iron heads a step would take, so iron
+    -- digging doesn't pay for itself. Clay heads from floor 1 dig here.
     drops = {
-      {name = "stone", chance = 0.25, minimum = 1, maximum = 1},
-      {name = "iron-ore", chance = 0.05, minimum = 1, maximum = 1},
-      {name = "coal", chance = 0.02, minimum = 1, maximum = 1}
+      {name = "ttc-iron-rich-rock", chance = 0.25, minimum = 1, maximum = 1},
+      {name = "coal", chance = 0.034, minimum = 1, maximum = 1}
     },
     veins = {
       {name = "stone", cell = 24, chance = 0.3, radius = {3, 6}, hardness = 20,
         drops = {{name = "stone", chance = 1, minimum = 1, maximum = 2}}},
-      -- Hard to break, but each tile gives ~1600 iron ore.
-      {name = "iron-ore", cell = 28, chance = 0.3, radius = {2, 5}, hardness = 20,
-        drops = {
-          {name = "iron-ore", chance = 0.5, minimum = 1, maximum = 1},
-          {name = "stone", chance = 0.25, minimum = 1, maximum = 1}
-        }}
+      -- Fuel for the bores: rarer than on floor 3, ~3200 coal a step.
+      {name = "coal", cell = 32, chance = 0.2, radius = {2, 4}, hardness = 20,
+        drops = {{name = "coal", chance = 0.5, minimum = 1, maximum = 1}}}
     },
     unlocks = {
-      {item = "iron-ore", technology = "ttc-iron-discovery"}
+      {item = "ttc-iron-rich-rock", technology = "ttc-iron-discovery"}
     }
   },
   -- Copper, coal and more iron.
@@ -94,23 +114,23 @@ return {
     name = "floor_3",
     surface_name = "ttc-floor-3",
     tunnel_tile = "red-desert-2",
-    -- The deep shafts are projects: ~15 min of digging with iron heads, but
-    -- the drill stops whenever its stone isn't cleared (~2000 stone).
+    -- The deep shafts are projects: 400 clay heads, and the drill stops
+    -- whenever its output isn't cleared. Through floor 2's own rock: ~2000
+    -- iron-rich rock.
     shaft = {
       hits = 10000,
       drops = {
-        {name = "stone", chance = 0.2, minimum = 1, maximum = 1}
+        {name = "ttc-iron-rich-rock", chance = 0.2, minimum = 1, maximum = 1}
       }
     },
     reached_unlocks = {"ttc-reach-floor-3"},
-    hits_per_tile = 640,
-    -- Per tile: ~60 stone, ~20 copper ore, ~10 coal, ~13 iron ore: more iron
-    -- than the 16 iron heads (8 plates) a tile takes.
+    hits_per_tile = 320,
+    -- Per step: ~64 iron-rich and ~64 copper-rich rock (~13 plates of each
+    -- when ground), ~10 coal. Plain ore only in the veins.
     drops = {
-      {name = "stone", chance = 0.1, minimum = 1, maximum = 1},
-      {name = "copper-ore", chance = 0.03, minimum = 1, maximum = 1},
-      {name = "coal", chance = 0.015, minimum = 1, maximum = 1},
-      {name = "iron-ore", chance = 0.02, minimum = 1, maximum = 1}
+      {name = "ttc-iron-rich-rock", chance = 0.1, minimum = 1, maximum = 1},
+      {name = "ttc-copper-rich-rock", chance = 0.1, minimum = 1, maximum = 1},
+      {name = "coal", chance = 0.015, minimum = 1, maximum = 1}
     },
     veins = {
       {name = "copper-ore", cell = 24, chance = 0.3, radius = {3, 6}, hardness = 20,
@@ -127,25 +147,23 @@ return {
     name = "floor_4",
     surface_name = "ttc-floor-4",
     tunnel_tile = "dry-dirt",
-    -- ~20 min with reinforced heads, ~4000 stone.
+    -- 500 iron heads; ~4000 pieces of floor 3's and floor 4's rock.
     shaft = {
       hits = 40000,
-      drops = {
-        {name = "stone", chance = 0.1, minimum = 1, maximum = 1}
-      },
+      mix = 0.1,
       unlocks = {
         {progress = 0.5, technology = "ttc-manhole", message = "ttc.manhole-realized"}
       }
     },
     reached_unlocks = {"ttc-reach-floor-4"},
-    hits_per_tile = 2560,
-    -- Per tile: ~50 stone, ~20 sulfur, ~20 coal, ~10 iron and copper ore.
+    hits_per_tile = 1280,
+    -- Per step: ~50 iron-rich and ~50 copper-rich rock (~10 plates of each),
+    -- ~20 sulfur, ~20 coal.
     drops = {
-      {name = "stone", chance = 0.02, minimum = 1, maximum = 1},
+      {name = "ttc-iron-rich-rock", chance = 0.02, minimum = 1, maximum = 1},
+      {name = "ttc-copper-rich-rock", chance = 0.02, minimum = 1, maximum = 1},
       {name = "sulfur", chance = 0.008, minimum = 1, maximum = 1},
-      {name = "coal", chance = 0.008, minimum = 1, maximum = 1},
-      {name = "iron-ore", chance = 0.004, minimum = 1, maximum = 1},
-      {name = "copper-ore", chance = 0.004, minimum = 1, maximum = 1}
+      {name = "coal", chance = 0.008, minimum = 1, maximum = 1}
     },
     veins = {
       {name = "sulfur", sprite = "stone", tint = {r = 1, g = 0.95, b = 0.35}, cell = 28, chance = 0.3,
@@ -163,21 +181,18 @@ return {
     surface_name = "ttc-floor-5",
     tunnel_tile = "red-desert-0",
     needs_coolant = true,
-    -- ~15 min with hardened heads, ~5000 stone.
+    -- 200 reinforced heads; ~5000 pieces of floor 4's and floor 5's rock.
     shaft = {
       hits = 100000,
-      drops = {
-        {name = "stone", chance = 0.05, minimum = 1, maximum = 1}
-      }
+      mix = 0.05
     },
     reached_unlocks = {"ttc-reach-floor-5"},
-    hits_per_tile = 10240,
-    -- Per tile: ~50 stone, ~20 uranium ore, ~30 iron and copper ore, ~20 sulfur.
+    hits_per_tile = 5120,
+    -- Per step: ~150 iron-rich and ~150 copper-rich rock (~30 plates of
+    -- each), ~20 sulfur. Uranium only in its veins.
     drops = {
-      {name = "stone", chance = 0.005, minimum = 1, maximum = 1},
-      {name = "uranium-ore", chance = 0.002, minimum = 1, maximum = 1},
-      {name = "iron-ore", chance = 0.003, minimum = 1, maximum = 1},
-      {name = "copper-ore", chance = 0.003, minimum = 1, maximum = 1},
+      {name = "ttc-iron-rich-rock", chance = 0.015, minimum = 1, maximum = 1},
+      {name = "ttc-copper-rich-rock", chance = 0.015, minimum = 1, maximum = 1},
       {name = "sulfur", chance = 0.002, minimum = 1, maximum = 1}
     },
     veins = {
@@ -190,3 +205,45 @@ return {
     }
   }
 }
+
+-- Shafts with `mix`: half the floor above's wall drops and half this
+-- floor's, leaving out what the floor above doesn't have, scaled so a hit
+-- brings up `mix` items on average.
+local function expected(drops)
+  local total = 0
+  for _, drop in ipairs(drops) do
+    total = total + drop.chance * (drop.minimum + drop.maximum) / 2
+  end
+  return total
+end
+
+for index, layer in ipairs(layers) do
+  local shaft = layer.shaft
+  if shaft and shaft.mix then
+    local above = layers[index - 1].drops
+    local known = {}
+    for _, drop in ipairs(above) do
+      known[drop.name] = true
+    end
+    local here = {}
+    for _, drop in ipairs(layer.drops) do
+      if known[drop.name] then
+        here[#here + 1] = drop
+      end
+    end
+    local scale = shaft.mix / ((expected(above) + expected(here)) / 2)
+    shaft.drops = {}
+    for _, source in ipairs({above, here}) do
+      for _, drop in ipairs(source) do
+        shaft.drops[#shaft.drops + 1] = {
+          name = drop.name,
+          chance = math.min(1, drop.chance / 2 * scale),
+          minimum = drop.minimum,
+          maximum = drop.maximum
+        }
+      end
+    end
+  end
+end
+
+return layers

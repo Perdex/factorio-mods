@@ -40,13 +40,17 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
   digging, unlocked with oil processing along with coolant from 100 water,
   20 petroleum gas and 2 dust; lubricant brings a recipe with 4 lubricant
   instead of the petroleum).
-- [x] Heads hit three times as fast per tier (wooden 10 hits, clay 20, iron
+- [x] Heads hit three times as fast per tier (wooden 10 hits, clay 25, iron
   80, reinforced 500), so veins are long but feasible projects.
 - [x] Mk1/Mk2 are 2x2, rotatable (a connectionless fluid box keeps a square
   furnace rotatable), 4-direction sprites with the cutter overlapping the wall
-  ahead; placeable anywhere on open ground. Each hit lands on the whole
-  face: softer tiles (plain rock beside a vein) break first.
-- [x] Mk3 is 3 wide and 2 long with two cutters: supply loader, coolant inlet
+  ahead; placeable anywhere on open ground. Hits take turns over the tiles
+  in front, skipping open ones, each tile needing the floor's hits per tile
+  whatever the bore (progress kept per tile in `storage.ttc.wall_hits`): a
+  half open face takes half the hits and drops, rock beside a vein averages,
+  a Mk3 step takes and gives 1.5 times a 2-wide step, and each hit drops
+  what its tile holds.
+- [x] Mk3 is 3x3 (so it turns in place) with two cutters: supply loader, coolant inlet
   and output loader across its back. It lays a pipe behind its inlet per tile
   from a pipe stock of up to 10, pulled off the supply lane (returned when
   mined), so the coolant line follows it.
@@ -76,8 +80,8 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 
 ## 2. Floors
 
-- [x] Floors 1–3 in `shared/layers.lua`: clay with lots of loose stone (40
-  hits/tile), stone with a little iron (160), copper, coal and more iron (640,
+- [x] Floors 1–3 in `shared/layers.lua`: clay with lots of loose stone (20
+  hits/tile), stone with a little iron (80), copper, coal and more iron (320,
   rough). Surfaces `ttc-floor-N`.
 - [x] Cliff walls cut from the base game's cliff textures, continuing 4-tile
   runs along a wall; thin walls get a short face.
@@ -85,8 +89,30 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 - [ ] Floors 6+ for the second half of the game.
 - [x] Ore veins in the rock (`veins` per floor, `runtime/veins.lua`): placed
   from the map seed, shown by base ore sprites on exposed rock, 20x harder,
-  rich in their resource, with an icon on every third exposed tile. Floor 1 stone and clay; floor 2 stone and iron; floor 3
+  rich in their resource, with an icon on every third exposed tile. Floor 1 stone and clay; floor 2 stone, iron and coal; floor 3
   copper, coal and iron. "Ore veins" setting; remote `set_veins`/`vein_at`.
+- [x] Walls give metal-rich rock instead of stone and plain ore: iron-rich
+  from floor 2, copper-rich from floor 3 (same rate as iron there). Sorted
+  by hand (0.5 s: 20% ore, 2% coal, else stone) or ground (one gravel, 80%
+  granules); granules smelt 4:1 to plates. Plain ore only in veins. The
+  first iron-rich rock is the iron discovery, the first copper-rich rock
+  unlocks steam power. The shaft from floor 1 to floor 2 brings some up
+  (20%, the rest stone); hand sorting unlocks on floor 2 (copper on 3).
+  Icons from `tools/ore_gfx.py`.
+- [x] Floor 2 has no copper and so no electricity: the first assembling
+  machine burns fuel (bricks instead of circuits); pipes and the offshore
+  pump come with floor 2, steam power with copper, the splitter and
+  long-handed inserter with electronics (`prototypes/power.lua`).
+- [x] Floor 2 (80 hits a tile, soft enough to go looking for its coal
+  veins; no iron veins): 40 iron-rich rock a step, ground to ~8 iron
+  plates, the cost of the iron heads a
+  step would take: clay heads from floor 1 dig floor 2; iron heads come with
+  floor 2 too (for reaching veins), reinforced with floor 4, hardened with
+  floor 5, carbide with floor 6. Deeper shafts bring up both floors' wall
+  materials, but nothing the floor above lacks; uranium only in veins.
+- [ ] Pacing of the head-per-floor ladder: shafts now take ~40-55 min each
+  (clay heads to floor 3, iron to floor 4, reinforced to floor 5); floor 3's
+  walls (320 a tile) are now only twice floor 2's.
 - [ ] Rare finds (geodes, artifacts).
 - [x] Heat on floor 5: bores without coolant stop.
 - [ ] More hazards: gas, flooding, collapses.
@@ -154,16 +180,18 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 - [x] No ore on the surface. Crash site: core drill and 5 wooden drill heads
   in the ship, 2 coal in the wreckage, empty pockets.
 - [x] Drill heads: wooden (wood, stone), unfired clay (shaped; one hit),
-  clay (shaped, then fired), iron (iron
-  discovery), reinforced (10 steel plates crafted).
+  clay (shaped, then fired), iron (floor 2), reinforced (floor 4).
 - [x] Sand → glass (pipes, lamps); clay → clay bricks (5:1; the base stone
   brick, renamed; boilers, steam engines, bore Mk1).
 - [x] Rock disposal from floor 2: grinder (burner, 2x2, 3:2 per step) and
   winnower (3x3, wind-powered, surface only), `prototypes/grinding.lua`, art
   from `tools/grinding_gfx.py`. The electric mining drill is removed: ore comes from digging.
-- [x] Hardened (plastics) and carbide (floor 5) drill heads; Mk3 bores use
+- [x] Hardened (floor 5) and carbide (floor 6) drill heads; Mk3 bores use
   bore coolant (water, petroleum gas or lubricant, dust).
 - [ ] Balance pass on dig times, fuel, heads and drops per floor.
+  Coal: floors 1-2 give back ~90% of clay heads' fuel (FLOORS.md, Coal);
+  floors 3-5 and the core drill's shafts (~190 coal to floor 3) not yet
+  balanced.
 
 ## 6. Polish
 
@@ -173,13 +201,15 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 
 ## 7. Tooling and testing
 
-- [x] Headless engine test (`v1/tests/run.sh`, 124 checks): tunnels and walls,
+- [x] Headless engine test (`v1/tests/run.sh`, 142 checks): tunnels and walls,
   bore placement, digging, belts, wires, core drill shafts to floor 2, stairs,
   transfers, crash site, technologies.
 - [x] `deploy_local.sh` links `src` into the mods folder; `package.sh`
   builds the mod portal zip.
-- [x] Locale check (`v1/tests/locale.sh`): every visible name, description
-  and runtime message key exists, following the game's fallbacks; keys the
-  base game alone misses are ignored.
+- [x] Static checks (`v1/tests/static.sh`), on a prototype dump: every
+  visible name, description and runtime message key exists, following the
+  game's fallbacks (keys the base game alone misses are ignored); and no
+  recipe unlocks on a floor before its ingredients can be had there
+  (`check_unlocks.py`, simulating progression floor by floor).
 - [ ] Tests still missing: blocked bore, belt-fed supply, multiplayer forces.
 - [ ] Lua language server annotations (`.luarc.json`).
