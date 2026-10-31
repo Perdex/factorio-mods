@@ -197,9 +197,11 @@ def require_key(key, where):
 # complete at run time.
 literal = re.compile(r'"((?:ttc[a-z-]*|[a-z-]+-name|[a-z-]+-description)\.[A-Za-z0-9_-]+)"(?!\s*\.\.)')
 built = [
-    (re.compile(r'set_status\([^,()]+,\s*"([a-z-]+)"'), "ttc-status."),
-    (re.compile(r'refund\([^()]*"([a-z-]+)"\)'), "ttc.transfer-"),
-    (re.compile(r'return nil, "([a-z-]+)"'), "ttc."),
+    (re.compile(r'set_status\([^,()]+,\s*"([a-z-]+)"'), "ttc-status.", ""),
+    (re.compile(r'refund\([^()]*"([a-z-]+)"\)'), "ttc.transfer-", ""),
+    (re.compile(r'return nil, "([a-z-]+)"'), "ttc.", ""),
+    # The bore's dig loop returns the status it stops with.
+    (re.compile(r'^\s*return "([a-z]+(?:-[a-z]+)+)"\s*$'), "ttc-status.", "runtime/bore.lua"),
 ]
 for root, _, files in os.walk(options.sources):
     for file_name in sorted(files):
@@ -210,7 +212,9 @@ for root, _, files in os.walk(options.sources):
                     where = f"{os.path.relpath(path, options.sources)}:{number}"
                     for key in literal.findall(line):
                         require_key(key, where)
-                    for pattern, prefix in built:
+                    for pattern, prefix, only in built:
+                        if only and not path.endswith(only):
+                            continue
                         for part in pattern.findall(line):
                             require_key(prefix + part, where)
 with open(options.runtime_keys, encoding="utf-8") as f:

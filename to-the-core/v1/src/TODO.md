@@ -15,7 +15,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 1. **Playtest from an empty start** against the pacing target (20–40 h in
    total, 5–10 h to floor 5, 1–2 h for speedrunners; see `FLOORS.md`): soft-locks, pacing of floors 1–5, stair feel, the left cliff
    wall, vein visibility, the core drill depth bar.
-2. **Getting rid of rock** — grinders (3:2 per step, 3x slower per step,
+2. **Getting rid of rock** — grinders (3:2 per step, 3x slower per step: 2, 6, 18 s,
    from floor 2) and surface-only winnowers. Playtest whether it's hard
    enough, and whether dust should also be usable (e.g. as filler).
 3. **Enemies from floor 4**, now that the military tier unlocks there.
@@ -63,6 +63,13 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
   off the supply lane; without belts it leaves a bare tunnel. Hidden loaders
   follow its rear.
 - [x] Circuit connection; its wires follow the bore along the supply lane.
+- [x] Belt and pipe stock shown as inventory slots in the wall panel: click
+  with the item in hand to add, with an empty hand to take (untested in a
+  live game: the engine test has no player).
+- [x] Stops, set in the wall panel: at a vein ahead (off by default), and
+  for a Mk2/Mk3 when out of belts (and pipes) for the next step (on by
+  default: it digs its face out and pauses just before moving; off, it
+  leaves a bare tunnel as before).
 - [x] Circuit control: turn signals (clockwise/anticlockwise arrows) turn it
   on each step; it can output hits remaining (signal H) and a one-tick pulse
   when it moves, set in the wall panel. Contents, ingredients and fuel are
@@ -93,7 +100,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
   copper, coal and iron. "Ore veins" setting; remote `set_veins`/`vein_at`.
 - [x] Walls give metal-rich rock instead of stone and plain ore: iron-rich
   from floor 2, copper-rich from floor 3 (same rate as iron there). Sorted
-  by hand (0.5 s: 20% ore, 2% coal, else stone) or ground (one gravel, 80%
+  by hand (2 s: 20% ore, 2% coal, else stone) or ground (one gravel, 80%
   granules); granules smelt 4:1 to plates. Plain ore only in veins. The
   first iron-rich rock is the iron discovery, the first copper-rich rock
   unlocks steam power. The shaft from floor 1 to floor 2 brings some up
@@ -110,9 +117,18 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
   floor 2 too (for reaching veins), reinforced with floor 4, hardened with
   floor 5, carbide with floor 6. Deeper shafts bring up both floors' wall
   materials, but nothing the floor above lacks; uranium only in veins.
+- [x] The core drill wears heads five times faster than a bore (same hits a
+  second), making it the main sink for heads: shafts take 80 clay heads to
+  floor 2, 2 000 to floor 3, 2 500 iron heads to floor 4, 1 000 reinforced
+  to floor 5. The first shaft is 20 hits (10 wooden heads).
 - [ ] Pacing of the head-per-floor ladder: shafts now take ~40-55 min each
   (clay heads to floor 3, iron to floor 4, reinforced to floor 5); floor 3's
   walls (320 a tile) are now only twice floor 2's.
+- [x] Vein frequency and size tuned (FLOORS.md, Walls and ore veins): on
+  average no more than ~4 h of one bore's tunnelling to find any vein, ~75
+  tiles for floor 1's clay (~63 for floor 2's coal); key veins at least a
+  starter patch (floor 3 iron and copper ~316k ore; floor 2 coal only
+  ~37k, as little coal is needed there before power grows).
 - [ ] Rare finds (geodes, artifacts).
 - [x] Heat on floor 5: bores without coolant stop.
 - [ ] More hazards: gas, flooding, collapses.
@@ -126,8 +142,9 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
   `hits` deep with per-hit drops: 100 to floor 1 (sand, clay), 400 to
   floor 2 (both dug by hand-fed drills), then 10 000 to floor 3, 40 000 to
   floor 4 and 100 000 to floor 5 (~15–20 min of digging each), leaving
-  2 000–5 000 stone: getting rid of it is the real limit. Crafting one needs
-  steel and circuits. Each break-through message hints at the ground below.
+  2 000–5 000 stone: getting rid of it is the real limit. There is one core
+  drill, from the crashed ship: it can't be mined once placed and has no
+  recipe (for now). Each break-through message hints at the ground below.
 - [x] The burner inserter is a mechanical inserter (no fuel), so floor 2
   can be automated.
 - [x] Break-through clears the site (buildings are mined and dropped on the
@@ -153,6 +170,20 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 - [ ] Belt and pipe end art: the bottom ends reuse the top ends' sprites.
 - [ ] Power connector graphics (reuses the medium electric pole).
 - [x] Depth bar panel beside the core drill's window.
+- [x] The bores and core drill use the mod's own hidden loader (base 1x1
+  loader with a plate over only the machine's half of the tile, so the belt
+  end shows, drawn as a low box with a front face; art from
+  `tools/loader_gfx.py`). The game picks an output loader's frame by the
+  opposite of its facing, which the art allows for.
+- [x] A yellow output loader on each side of the core drill without stairs,
+  appearing once its spot is dug out (like a bore's); what's on them moves
+  down with the drill.
+- [x] Shaft drops retuned per second: ~180 clay and ~45 sand to floor 1; 2 stone and
+  0.2 iron-rich rock a second to floor 2; 8 stone a second to floor 3;
+  hardened stone (stack 1, not sortable) at 5 and 15 a second to floors 4
+  and 5. Stone stacks to 20.
+- [ ] Grinding hardened stone (10 s to one gravel) is a stand-in: it should
+  also take resources.
 - [ ] Shaft drops and depths for floors 3+ need real designs.
 - [ ] Landing spot blocked by player builds: currently waits; clear/relocate?
 - [ ] Travel UX: hint on the stairs, maybe a hotkey.
@@ -164,7 +195,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 - [x] No science or labs. Red/green technologies unlock by floor arrivals and
   crafting/building triggers (`shared/progression.lua`); floor arrivals and
   discoveries (iron, copper) use scripted triggers.
-- [x] Automation unlocks with the first 50 smelted iron plates, logistics
+- [x] Automation unlocks with the first 30 smelted iron plates, logistics
   with 10 belts crafted.
 - [x] Military and blue tiers mapped (floor 4–5 arrivals, crafting and fluid
   milestones); the first military technologies from floor 4. Uranium
@@ -181,7 +212,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
   in the ship, 2 coal in the wreckage, empty pockets.
 - [x] Drill heads: wooden (wood, stone), unfired clay (shaped; one hit),
   clay (shaped, then fired), iron (floor 2), reinforced (floor 4).
-- [x] Sand → glass (pipes, lamps); clay → clay bricks (5:1; the base stone
+- [x] Sand → glass (pipes, lamps); clay → clay bricks (4:1; the base stone
   brick, renamed; boilers, steam engines, bore Mk1).
 - [x] Rock disposal from floor 2: grinder (burner, 2x2, 3:2 per step) and
   winnower (3x3, wind-powered, surface only), `prototypes/grinding.lua`, art
@@ -189,7 +220,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 - [x] Hardened (floor 5) and carbide (floor 6) drill heads; Mk3 bores use
   bore coolant (water, petroleum gas or lubricant, dust).
 - [ ] Balance pass on dig times, fuel, heads and drops per floor.
-  Coal: floors 1-2 give back ~90% of clay heads' fuel (FLOORS.md, Coal);
+  Coal: floor 1 gives back all of clay heads' fuel, floor 2 ~90% (FLOORS.md, Coal);
   floors 3-5 and the core drill's shafts (~190 coal to floor 3) not yet
   balanced.
 
@@ -201,7 +232,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done / needs revisiting.
 
 ## 7. Tooling and testing
 
-- [x] Headless engine test (`v1/tests/run.sh`, 142 checks): tunnels and walls,
+- [x] Headless engine test (`v1/tests/run.sh`, 149 checks): tunnels and walls,
   bore placement, digging, belts, wires, core drill shafts to floor 2, stairs,
   transfers, crash site, technologies.
 - [x] `deploy_local.sh` links `src` into the mods folder; `package.sh`

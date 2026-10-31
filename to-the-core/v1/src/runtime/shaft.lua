@@ -90,15 +90,96 @@ local function set_status(entity, status_key, diode, ...)
   } or nil
 end
 
+-- Loaders ------------------------------------------------------------------
+
+-- A yellow output loader in the middle of each side of the drill without
+-- stairs: across the axis of the shaft that reached its floor (on the
+-- starting surface, across the "we" axis), facing away. They empty the drill
+-- far faster than inserters could.
+local loader_name = require("shared.bore").loader_entity
+
+local function loader_spots(drill)
+  local _, index = layers.of_surface(drill.surface)
+  local axis = shaft_config.axis(index or 0)
+  local position = drill.position
+  local reach = math.floor(shaft_config.size / 2)
+  local spots = {}
+  for _, side in ipairs({-1, 1}) do
+    if axis == "ns" then
+      spots[#spots + 1] = {
+        position = {x = position.x + side * reach, y = position.y},
+        direction = side > 0 and defines.direction.east or defines.direction.west
+      }
+    else
+      spots[#spots + 1] = {
+        position = {x = position.x, y = position.y + side * reach},
+        direction = side > 0 and defines.direction.south or defines.direction.north
+      }
+    end
+  end
+  return spots
+end
+
+-- Creates the loaders that are missing, where there's room: like a bore's,
+-- one appears once its spot is dug out (and free).
+local function attach_loaders(state)
+  local drill = state.entity
+  local surface = drill.surface
+  state.loaders = state.loaders or {}
+  for index, spot in ipairs(loader_spots(drill)) do
+    local loader = state.loaders[index]
+    -- Saves from when the drill used the base game's loader get the mod's.
+    if loader and loader.valid and loader.name ~= loader_name then
+      loader.destroy()
+    end
+    if not (loader and loader.valid) then
+      local placed = {name = loader_name, position = spot.position, direction = spot.direction, force = drill.force}
+      loader = nil
+      if surface.can_place_entity(placed) then
+        placed.type = "output"
+        loader = surface.create_entity(placed)
+        loader.destructible = false
+        loader.minable_flag = false
+      end
+      state.loaders[index] = loader
+    end
+  end
+end
+
+-- Removes the drill's loaders. What's on them goes into `into` (item name ->
+-- count) when given, else onto the ground.
+local function destroy_loaders(state, into)
+  for _, loader in pairs(state.loaders or {}) do
+    if loader.valid then
+      for line = 1, loader.get_max_transport_line_index() do
+        for _, item in pairs(loader.get_transport_line(line).get_contents()) do
+          if into then
+            into[item.name] = (into[item.name] or 0) + item.count
+          else
+            loader.surface.spill_item_stack({position = loader.position, stack = item, allow_belts = false})
+          end
+        end
+      end
+      loader.destroy()
+    end
+  end
+  state.loaders = {}
+end
+
 function shaft.register(entity)
   local state = wear.new_state(entity)
   state.entity = entity
   state.hits = 0
   drills()[entity.unit_number] = state
+  attach_loaders(state)
   return state
 end
 
 function shaft.unregister(entity)
+  local state = drills()[entity.unit_number]
+  if state then
+    destroy_loaders(state)
+  end
   drills()[entity.unit_number] = nil
 end
 
@@ -269,6 +350,8 @@ local function break_through(state, below, below_index)
   for _, item in ipairs(drill.get_output_inventory().get_contents()) do
     pending[item.name] = (pending[item.name] or 0) + item.count
   end
+  -- So does what's on its loaders.
+  destroy_loaders(state, pending)
   local fuel = drill.get_fuel_inventory().get_contents()
   local burner = drill.burner
   local burning = burner.currently_burning
@@ -310,6 +393,7 @@ end
 
 local function update(state)
   local drill = state.entity
+  attach_loaders(state)
   local below, below_index = layers.below(drill.surface)
   if not below then
     set_status(drill, "deepest-layer", defines.entity_status_diode.red)
@@ -416,6 +500,7 @@ function shaft.tick()
     if state.entity.valid then
       update(state)
     else
+      destroy_loaders(state)
       drills()[unit_number] = nil
     end
   end

@@ -1,6 +1,7 @@
 require("prototypes.items")
 require("prototypes.core_drill")
 require("prototypes.bore")
+require("prototypes.loader")
 require("prototypes.tunnel")
 require("prototypes.transfer")
 require("prototypes.manhole")

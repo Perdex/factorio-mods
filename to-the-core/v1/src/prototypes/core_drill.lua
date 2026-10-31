@@ -59,7 +59,8 @@ data:extend({
     icon = icon,
     icon_size = 64,
     flags = {"placeable-neutral", "placeable-player", "player-creation"},
-    minable = {mining_time = 1, result = shaft.drill_name},
+    -- Once placed it stays: the one from the crashed ship is the only one, so
+    -- it can't be picked up to start shafts all over the surface.
     max_health = 1000,
     corpse = "big-remnants",
     dying_explosion = "big-explosion",
@@ -101,23 +102,8 @@ data:extend({
     order = "a[core-drill]",
     place_result = shaft.drill_name,
     stack_size = 1
-  },
-  {
-    type = "recipe",
-    name = shaft.drill_name,
-    categories = {"crafting"},
-    enabled = true,
-    energy_required = 5,
-    ingredients = {
-      {type = "item", name = "iron-plate", amount = 20},
-      {type = "item", name = "iron-gear-wheel", amount = 10},
-      {type = "item", name = "steel-plate", amount = 20},
-      {type = "item", name = "electronic-circuit", amount = 20}
-    },
-    results = {
-      {type = "item", name = shaft.drill_name, amount = 1}
-    }
   }
+  -- No recipe for now: the crashed ship's drill is the only one.
 })
 
 for _, axis in ipairs(shaft.axes) do
@@ -196,15 +182,19 @@ local output_slots = {}
 for _, name in ipairs(drop_names) do
   output_slots[#output_slots + 1] = {type = "item", name = name, amount = 0}
 end
-data.raw.furnace[shaft.drill_name].result_inventory_size = #drop_names
+-- A slot per drop, and room to spare for hardened stone, which doesn't stack:
+-- the drill delivers twice a second, up to ~8 pieces at a time.
+data.raw.furnace[shaft.drill_name].result_inventory_size = #drop_names + 10
 
-for head_name, head in pairs(require("shared.bore").heads) do
+for head_name in pairs(require("shared.bore").heads) do
+  local head = shaft.recipe_heads[shaft.recipe_name(head_name)]
   local item = data.raw.item[head.item]
   data:extend({
     {
       type = "recipe",
       name = shaft.recipe_name(head_name),
       localised_name = {"ttc.shaft-recipe-name", {"item-name." .. head.item}},
+      localised_description = {"ttc.shaft-recipe-description", tostring(head.durability)},
       icons = item.icons or {{icon = item.icon, icon_size = item.icon_size or 64}},
       subgroup = "ttc-boring",
       order = "d[shaft]-" .. head.durability,

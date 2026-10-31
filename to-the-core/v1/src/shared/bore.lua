@@ -15,6 +15,9 @@ local bore = {
       width = 3, length = 3, lays_pipes = true}
   },
   recipe_category = "ttc-dig",
+  -- The hidden 1x1 loader the belt-laying bores and the core drill use
+  -- (prototypes/loader.lua).
+  loader_entity = "ttc-loader",
   -- Mostly water, with a little petroleum gas or lubricant and dust
   -- (prototypes/bore.lua).
   coolant_fluid = "ttc-coolant",

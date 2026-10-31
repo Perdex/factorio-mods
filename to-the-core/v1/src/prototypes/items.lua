@@ -59,6 +59,23 @@ make_item("ttc-glass", "glass", "z[ttc]-glass", 100, "raw-material")
 -- Ground-down rock (prototypes/grinding.lua).
 make_item("ttc-gravel", "gravel", "z[ttc]-gravel", 100, "raw-resource")
 make_item("ttc-dust", "dust", "z[ttc]-dust", 200, "raw-resource")
+
+-- Stone has to be dealt with, not stockpiled: it stacks only to 20.
+data.raw.item["stone"].stack_size = 20
+
+-- The deep shafts' rock: too tough to sort by hand, and it doesn't stack.
+-- Ground to gravel for now (prototypes/grinding.lua).
+local stone = data.raw.item["stone"]
+data:extend({
+  {
+    type = "item",
+    name = "ttc-hardened-stone",
+    icons = {{icon = stone.icon, icon_size = stone.icon_size or 64, tint = {r = 0.55, g = 0.56, b = 0.64}}},
+    subgroup = "raw-resource",
+    order = "z[ttc]-hardened-stone",
+    stack_size = 1
+  }
+})
 -- Metal-rich rock from the walls (iron from floor 2, copper from floor 3),
 -- sorted by hand or ground (prototypes/grinding.lua); the granules smelt 4:1
 -- to plates. Icons from v1/tools/ore_gfx.py.
@@ -73,7 +90,7 @@ for index, metal in ipairs({"iron", "copper"}) do
       -- Only by hand: nothing but the player crafts in this category.
       categories = {"hand-crafting"},
       enabled = false,
-      energy_required = 0.5,
+      energy_required = 2,
       ingredients = {{type = "item", name = rock, amount = 1}},
       -- One roll per rock: 20% ore (as much metal as grinding gets out), 2%
       -- coal, otherwise plain stone.
@@ -122,7 +139,7 @@ table.insert(data.raw.recipe["pipe"].ingredients, {type = "item", name = "ttc-gl
 table.insert(data.raw.recipe["small-lamp"].ingredients, {type = "item", name = "ttc-glass", amount = 1})
 
 -- Bricks are fired clay, not stone: stone is the rubble digging leaves behind.
-data.raw.recipe["stone-brick"].ingredients = {{type = "item", name = "ttc-clay", amount = 5}}
+data.raw.recipe["stone-brick"].ingredients = {{type = "item", name = "ttc-clay", amount = 4}}
 for _, name in ipairs({"boiler", "steam-engine"}) do
   table.insert(data.raw.recipe[name].ingredients, {type = "item", name = "stone-brick", amount = 5})
 end

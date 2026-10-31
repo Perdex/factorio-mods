@@ -14,8 +14,9 @@ and drill heads.
    wood and stone. Wooden drill
    heads take 2 wood and 1 stone. Place the core drill (5x5) and feed
    it fuel and drill heads: it takes any head, like the tunnel bore, and wears
-   them out hit by hit. The shaft to floor 1 is 100 hits deep (10 wooden
-   heads), each hit bringing up sand and clay; a panel beside its window shows the shaft's depth.
+   them out hit by hit, five times faster than a tunnel bore does. The
+   shaft to floor 1 is 20 hits deep (10 wooden heads), each hit bringing up
+   sand and clay; a panel beside its window shows the shaft's depth.
 2. When the shaft breaks through, a pit is left behind with stairs going down
    along its north and south rims, and the drill moves down onto a small
    landing on the first underground layer. Walk down either stairway to follow

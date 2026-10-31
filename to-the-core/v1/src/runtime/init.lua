@@ -27,7 +27,7 @@ local function state()
 end
 
 local function enable_starter_recipes(force)
-  local names = {"ttc-core-drill"}
+  local names = {}
   -- A bore takes any drill head; saves from when dig recipes were locked
   -- behind technologies get them enabled here.
   for head_name in pairs(bore_config.heads) do
@@ -151,9 +151,10 @@ remote.add_interface("to-the-core", {
     local vein = veins.at(game.surfaces[surface_index], position)
     return vein and vein.name
   end,
-  -- What the panel's circuit options set: options = {read_hits, read_moved}.
-  set_bore_signals = function(unit_number, options)
-    bore.set_signals(unit_number, options)
+  -- What a bore's wall panel sets: options = {read_hits, read_moved,
+  -- stop_at_vein, stop_without_stock}.
+  set_bore_options = function(unit_number, options)
+    bore.set_options(unit_number, options)
   end,
   travel_target = function(surface_index, position, direction)
     local surface, target = shaft.travel_target(game.surfaces[surface_index], position, direction)
@@ -191,6 +192,7 @@ script.on_event({
   defines.events.on_gui_checked_state_changed,
   defines.events.on_gui_elem_changed
 }, bore.on_gui_changed)
+script.on_event(defines.events.on_gui_click, bore.on_gui_click)
 script.on_event(defines.events.on_tick, bore.end_pulses)
 script.on_nth_tick(10, function()
   bore.tick()

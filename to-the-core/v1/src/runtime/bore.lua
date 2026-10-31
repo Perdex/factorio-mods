@@ -15,7 +15,7 @@ local tunnel = require("runtime.tunnel")
 local veins = require("runtime.veins")
 local wear = require("runtime.wear")
 
-local loader_name = "loader-1x1"
+local loader_name = bore_config.loader_entity
 -- bore.tick runs every this many ticks (runtime/init.lua).
 local update_ticks = 10
 
@@ -135,6 +135,13 @@ local function attach_loaders(state)
   end
   local entity = state.entity
   local input_position, output_position, pipe_position = rear_tiles(entity)
+  -- Saves from when bores used the base game's loader get the mod's.
+  for _, key in ipairs({"input_loader", "output_loader"}) do
+    local loader = state[key]
+    if loader and loader.valid and loader.name ~= loader_name then
+      loader.destroy()
+    end
+  end
   if not (state.input_loader and state.input_loader.valid) then
     state.input_loader = create_loader(entity, input_position, "input")
   end
@@ -608,9 +615,15 @@ end
 -- bar, with the vein's resource shown when the bore is in one.
 local wall_frame = "ttc-bore-wall"
 
+-- The stock a belt-laying bore keeps for paving, shown as slots in its panel.
+local stock_kinds = {
+  {key = "belts", item = bore_config.paving_item, field = "belt_stock", limit = bore_config.belt_stock_limit},
+  {key = "pipes", item = bore_config.pipe_item, field = "pipe_stock", limit = bore_config.pipe_stock_limit}
+}
+
 local function wall_panel(player)
   local frame = player.gui.relative[wall_frame]
-  if frame and not frame.circuit then
+  if frame and not (frame.circuit and frame.stops and frame.stock) then
     -- Built by an older version.
     frame.destroy()
     frame = nil
@@ -632,6 +645,18 @@ local function wall_panel(player)
     row.add({type = "sprite", name = "vein"})
     row.add({type = "label", name = "wall"})
     frame.add({type = "progressbar", name = "bar"}).style.width = 220
+    -- The belt and pipe stock, as inventory slots.
+    local stock = frame.add({type = "flow", name = "stock", direction = "horizontal"})
+    for _, kind in ipairs(stock_kinds) do
+      stock.add({type = "sprite-button", name = "ttc-bore-stock-" .. kind.key, sprite = "item/" .. kind.item,
+        style = "inventory_slot", tags = {stock = kind.key}})
+    end
+    local stops = frame.add({type = "flow", name = "stops", direction = "vertical"})
+    stops.add({type = "line"})
+    stops.add({type = "checkbox", name = "ttc-bore-stop-at-vein", state = false,
+      caption = {"ttc.bore-stop-at-vein"}, tags = {setting = "stop_at_vein"}})
+    stops.add({type = "checkbox", name = "ttc-bore-stop-without-stock", state = true,
+      caption = {"ttc.bore-stop-without-belts"}, tags = {setting = "stop_without_stock"}})
     local circuit = frame.add({type = "flow", name = "circuit", direction = "vertical"})
     circuit.add({type = "line"})
     circuit.add({type = "label", caption = {"ttc.bore-circuit-title"}, style = "caption_label"})
@@ -657,7 +682,20 @@ local function show_wall(player, entity)
   local layer = layers_by_surface[entity.surface.name]
   local row = frame.row
   frame.circuit.visible = state ~= nil and wired(entity)
+  frame.stops.visible = state ~= nil
+  frame.stock.visible = state ~= nil and state.lays_belts or false
   if state then
+    for _, kind in ipairs(stock_kinds) do
+      local slot = frame.stock["ttc-bore-stock-" .. kind.key]
+      slot.visible = kind.key == "belts" or state.lays_pipes or false
+      slot.number = state[kind.field]
+      slot.tooltip = {"ttc.bore-stock-" .. kind.key, state[kind.field], kind.limit}
+    end
+    frame.stops["ttc-bore-stop-at-vein"].state = state.stop_at_vein or false
+    local stock = frame.stops["ttc-bore-stop-without-stock"]
+    stock.visible = state.lays_belts or false
+    stock.state = state.stop_without_stock ~= false
+    stock.caption = state.lays_pipes and {"ttc.bore-stop-without-stock"} or {"ttc.bore-stop-without-belts"}
     for _, option in ipairs({"hits", "moved"}) do
       frame.circuit[option]["ttc-bore-read-" .. option].state = state["read_" .. option] or false
       frame.circuit[option]["ttc-bore-signal-" .. option].elem_value = state[option .. "_signal"]
@@ -696,14 +734,53 @@ local function opened_state(player)
   end
 end
 
-function bore.on_gui_changed(event)
+-- Clicking a stock slot: with its item in hand, tops the stock up to its
+-- limit; with an empty hand, takes the stock.
+function bore.on_gui_click(event)
   local element = event.element
-  local option = element.valid and element.tags.option
-  if not (option and element.name:find("^ttc%-bore%-")) then
+  local key = element.valid and element.tags.stock
+  if not key then
     return
   end
-  local state = opened_state(game.get_player(event.player_index))
+  local player = game.get_player(event.player_index)
+  local state = opened_state(player)
   if not state then
+    return
+  end
+  for _, kind in ipairs(stock_kinds) do
+    if kind.key == key then
+      local cursor = player.cursor_stack
+      if cursor and cursor.valid_for_read then
+        if cursor.name == kind.item then
+          local moved = math.min(cursor.count, kind.limit - state[kind.field])
+          state[kind.field] = state[kind.field] + moved
+          if moved == cursor.count then
+            cursor.clear()
+          elseif moved > 0 then
+            cursor.count = cursor.count - moved
+          end
+        end
+      elseif state[kind.field] > 0 then
+        local taken = player.insert({name = kind.item, count = state[kind.field]})
+        state[kind.field] = state[kind.field] - taken
+      end
+      show_wall(player, state.entity)
+    end
+  end
+end
+
+function bore.on_gui_changed(event)
+  local element = event.element
+  if not (element.valid and element.name:find("^ttc%-bore%-")) then
+    return
+  end
+  local option, setting = element.tags.option, element.tags.setting
+  local state = (option or setting) and opened_state(game.get_player(event.player_index))
+  if not state then
+    return
+  end
+  if setting then
+    state[setting] = element.state
     return
   end
   if element.type == "checkbox" then
@@ -721,11 +798,16 @@ function bore.on_gui_changed(event)
   end
 end
 
-function bore.set_signals(unit_number, options)
+-- What the wall panel sets: read_hits, read_moved, stop_at_vein and
+-- stop_without_stock. Options left out keep their setting.
+function bore.set_options(unit_number, options)
   local state = bores()[unit_number]
   if state then
-    state.read_hits = options.read_hits
-    state.read_moved = options.read_moved
+    for _, key in ipairs({"read_hits", "read_moved", "stop_at_vein", "stop_without_stock"}) do
+      if options[key] ~= nil then
+        state[key] = options[key]
+      end
+    end
   end
 end
 
@@ -741,10 +823,41 @@ end
 -- Moves the bore on once nothing in front of it is left standing, then lets
 -- turn signals turn it (a Mk3 only where its new footprint fits). Returns
 -- false if it could not move.
+-- The bore's own stops, set in its wall panel. At a vein ahead (off by
+-- default): it pauses before hitting it.
+local function vein_stop(state, rock)
+  if state.stop_at_vein then
+    for _, tile in ipairs(rock) do
+      if tile.vein then
+        return "vein-ahead"
+      end
+    end
+  end
+end
+
+-- Out of belts (and pipes) for the next step (on by default; off, a
+-- belt-laying bore leaves a bare tunnel): it digs its face out and pauses
+-- just before moving on.
+local function stock_stop(state)
+  if state.lays_belts and state.stop_without_stock ~= false then
+    if state.belt_stock < bore_config.paving_count then
+      return "needs-belts"
+    end
+    if state.lays_pipes and state.pipe_stock < 1 then
+      return "needs-pipes"
+    end
+  end
+end
+
+-- Returns the status to stop with, if the bore can't move.
 local function step(state, layer)
   local entity = state.entity
+  local short = stock_stop(state)
+  if short then
+    return short
+  end
   if not advance(state, layer) then
-    return false
+    return "front-blocked"
   end
   state.hits = 0
   state.next_tile = 0
@@ -753,24 +866,35 @@ local function step(state, layer)
   if turn ~= 0 and entity.rotate({reverse = turn < 0}) then
     bore.on_rotated(entity)
   end
-  return true
 end
 
 -- Deals `count` hits. Each lands on the next solid tile in front, in turn,
 -- skipping open ones, and brings out that tile's drops; a tile breaks once it
 -- has taken its needed hits, and the bore steps forward when none is left.
 -- On open ground every hit is a step. Returns a status key if blocked.
+
 local function dig(state, layer, count)
   local entity = state.entity
+  -- Checked even when no hit lands, so a stopped bore starts again.
+  local rock = face(entity, layer)
+  local stop = vein_stop(state, rock) or (#rock == 0 and stock_stop(state))
+  if stop then
+    return stop
+  end
   for _ = 1, count do
     local blocker = front_blocker(entity, layer)
     if blocker then
       return blocker
     end
-    local rock = face(entity, layer)
+    rock = face(entity, layer)
+    stop = vein_stop(state, rock)
+    if stop then
+      return stop
+    end
     if #rock == 0 then
-      if not step(state, layer) then
-        return "front-blocked"
+      stop = step(state, layer)
+      if stop then
+        return stop
       end
     else
       -- The next solid tile after the last one hit.
@@ -788,8 +912,11 @@ local function dig(state, layer, count)
       wear.roll(state, target.drops, 1)
       if target.hits + 1 >= target.needed - 0.001 then
         break_rock(entity.surface, {target.position}, layer)
-        if #face(entity, layer) == 0 and not step(state, layer) then
-          return "front-blocked"
+        if #face(entity, layer) == 0 then
+          stop = step(state, layer)
+          if stop then
+            return stop
+          end
         end
       end
     end

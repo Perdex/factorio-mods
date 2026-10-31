@@ -54,9 +54,20 @@ function shaft.recipe_name(head_name)
   return "ttc-shaft-" .. head_name
 end
 
+-- The core drill grinds its heads down far faster than a tunnel bore: a head
+-- lasts this many times fewer hits in it, at the same hits a second, so a
+-- shaft eats that many times the heads (it is the factory's main sink).
+shaft.head_wear = 5
+
+-- Dig recipe -> the head as the core drill wears it: the same item and hit
+-- time, a fraction of the hits.
 shaft.recipe_heads = {}
 for head_name, head in pairs(require("shared.bore").heads) do
-  shaft.recipe_heads[shaft.recipe_name(head_name)] = head
+  shaft.recipe_heads[shaft.recipe_name(head_name)] = {
+    item = head.item,
+    durability = head.durability / shaft.head_wear,
+    hit_time = head.hit_time
+  }
 end
 
 return shaft

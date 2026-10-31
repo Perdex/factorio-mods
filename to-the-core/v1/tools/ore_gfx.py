@@ -2,8 +2,8 @@
 ground out of it (64x64 each).
 
 Outputs into <out>:
-  iron-rich-rock.png    the base game's stones, greyer, flecked with iron
-  copper-rich-rock.png  the same, flecked with copper
+  iron-rich-rock.png    the base game's stones, the two small ones iron
+  copper-rich-rock.png  the same, the two small ones copper
   iron-granules.png     a heap of small iron pellets
   copper-granules.png   the same in copper
 
@@ -23,45 +23,48 @@ SS = 4
 C = 64 * SS
 
 
-def rock_polygon(cx, cy, r, seed, points=11):
-    rng = random.Random(seed)
-    return [(cx + math.cos(2 * math.pi * i / points) * r * rng.uniform(0.75, 1.05),
-             cy + math.sin(2 * math.pi * i / points) * r * rng.uniform(0.7, 0.95)) for i in range(points)]
+def stones(alpha):
+    """The separate stones in an icon's alpha mask, as sets of pixels,
+    smallest first."""
+    w, h = alpha.size
+    px = alpha.load()
+    seen, found = set(), []
+    for y in range(h):
+        for x in range(w):
+            if px[x, y] < 128 or (x, y) in seen:
+                continue
+            stone, todo = set(), [(x, y)]
+            seen.add((x, y))
+            while todo:
+                cx, cy = todo.pop()
+                stone.add((cx, cy))
+                for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                    if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in seen and px[nx, ny] >= 128:
+                        seen.add((nx, ny))
+                        todo.append((nx, ny))
+            found.append(stone)
+    return sorted(found, key=len)
 
 
 def rich_rock(stone_icon, colour):
-    """The base game's stone icon, a little greyer, flecked with one ore's
-    colour, the flecks following the stones' own shading."""
-    stone = Image.open(stone_icon).convert("RGBA").crop((0, 0, 64, 64)).resize((C, C), Image.LANCZOS)
-    grey = ImageOps.grayscale(stone).convert("RGBA")
-    img = Image.blend(stone, grey, 0.45)
-    img.putalpha(stone.getchannel("A"))
-    alpha = stone.getchannel("A").load()
-    shade = ImageOps.grayscale(stone).load()
-    flecks = Image.new("RGBA", (C, C), (0, 0, 0, 0))
-    d = ImageDraw.Draw(flecks)
-    rng = random.Random(7)
-    for count in (18,):
-        placed = 0
-        while placed < count:
-            x, y = rng.uniform(C * 0.1, C * 0.9), rng.uniform(C * 0.1, C * 0.9)
-            if alpha[int(x), int(y)] < 250:
-                continue
-            s = rng.uniform(C * 0.018, C * 0.035)
-            d.polygon(rock_polygon(x, y, s, rng.randint(0, 999), 6), fill=colour)
-            placed += 1
-    # Shade the flecks like the stone under them, so they sit in its surface,
-    # and keep them on the stone.
-    fpx = flecks.load()
-    for y in range(C):
-        for x in range(C):
-            r, g, b, a = fpx[x, y]
-            if a:
-                k = 0.45 + shade[x, y] / 255 * 0.9
-                fpx[x, y] = (min(255, int(r * k)), min(255, int(g * k)), min(255, int(b * k)),
-                             min(int(a * 0.85), alpha[x, y]))
-    img.alpha_composite(flecks)
-    return img
+    """The base game's stone icon, the big stones as they are and the two
+    small ones in the corners in an ore's colour, keeping their shading."""
+    img = Image.open(stone_icon).convert("RGBA").crop((0, 0, 64, 64))
+    shade = ImageOps.grayscale(img).load()
+    alpha = img.getchannel("A")
+    px = img.load()
+    nodules = stones(alpha)[:2]
+    # Grow each nodule by its soft edge, so the anti-aliased rim is recoloured too.
+    apx = alpha.load()
+    for stone in nodules:
+        rim = {(x + dx, y + dy) for x, y in stone for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
+        mean = sum(shade[x, y] for x, y in stone) / len(stone)
+        for x, y in rim:
+            if 0 <= x < 64 and 0 <= y < 64 and apx[x, y] > 0:
+                k = shade[x, y] / mean
+                r, g, b = (min(255, int(c * k)) for c in colour)
+                px[x, y] = (r, g, b, apx[x, y])
+    return img.resize((C, C), Image.LANCZOS)
 
 
 def granules(light, dark, seed):
@@ -87,7 +90,7 @@ def save(img, name):
     img.filter(ImageFilter.GaussianBlur(SS * 0.3)).resize((64, 64), Image.LANCZOS).save(f"{out}/{name}.png", optimize=True)
 
 
-save(rich_rock(stone_icon, (92, 112, 138)), "iron-rich-rock")
-save(rich_rock(stone_icon, (196, 112, 58)), "copper-rich-rock")
+save(rich_rock(stone_icon, (112, 124, 142)), "iron-rich-rock")
+save(rich_rock(stone_icon, (206, 112, 52)), "copper-rich-rock")
 save(granules((150, 160, 172), (64, 70, 80), 1), "iron-granules")
 save(granules((226, 140, 82), (120, 62, 30), 2), "copper-granules")

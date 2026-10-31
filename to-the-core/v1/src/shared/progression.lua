@@ -51,7 +51,7 @@ return {
   triggers = {
     -- Floor 2: iron, but no copper. (Electronics keeps its base trigger:
     -- 10 copper plates.)
-    ["automation"] = {craft = "iron-plate", count = 50},
+    ["automation"] = {craft = "iron-plate", count = 30},
     -- Power is no use without copper for the poles: it comes with the first
     -- copper-rich rock (floor 3). Its pipes and offshore pump come with
     -- floor 2 instead (prototypes/power.lua).

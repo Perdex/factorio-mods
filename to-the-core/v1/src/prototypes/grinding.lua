@@ -94,10 +94,12 @@ data:extend({
   {type = "recipe-category", name = "ttc-grinding"},
   {type = "recipe-category", name = "ttc-winnowing"},
 
-  -- Each step 3:2 and three times slower than the one before.
-  recipe("ttc-grind-stone", "ttc-grinding", 1, "stone", "ttc-gravel"),
-  recipe("ttc-grind-gravel", "ttc-grinding", 3, "ttc-gravel", "ttc-sand"),
-  recipe("ttc-grind-sand", "ttc-grinding", 9, "ttc-sand", "ttc-dust"),
+  -- Each step 3:2 and three times slower than the one before. With the
+  -- winnowing, a stone grinder needs 2 gravel grinders, 4 sand grinders and
+  -- 4 winnowers behind it.
+  recipe("ttc-grind-stone", "ttc-grinding", 2, "stone", "ttc-gravel"),
+  recipe("ttc-grind-gravel", "ttc-grinding", 6, "ttc-gravel", "ttc-sand"),
+  recipe("ttc-grind-sand", "ttc-grinding", 18, "ttc-sand", "ttc-dust"),
   recipe("ttc-winnow-dust", "ttc-winnowing", 27, "ttc-dust", nil),
   machine("ttc-grinder", 2, {
     crafting_categories = {"ttc-grinding"},
@@ -139,7 +141,7 @@ for _, metal in ipairs({"iron", "copper"}) do
       enabled = true,
       hide_from_player_crafting = true,
       allow_decomposition = false,
-      energy_required = 1,
+      energy_required = 2,
       ingredients = {{type = "item", name = "ttc-" .. metal .. "-rich-rock", amount = 1}},
       results = {
         {type = "item", name = "ttc-gravel", amount = 1},
@@ -151,3 +153,19 @@ for _, metal in ipairs({"iron", "copper"}) do
     }
   })
 end
+
+-- Hardened stone from the deep shafts, slowly. For now: it is meant to need
+-- more than time later on.
+data:extend({
+  {
+    type = "recipe",
+    name = "ttc-grind-hardened-stone",
+    categories = {"ttc-grinding"},
+    enabled = true,
+    hide_from_player_crafting = true,
+    allow_decomposition = false,
+    energy_required = 10,
+    ingredients = {{type = "item", name = "ttc-hardened-stone", amount = 1}},
+    results = {{type = "item", name = "ttc-gravel", amount = 1}}
+  }
+})

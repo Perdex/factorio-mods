@@ -161,7 +161,7 @@ end
 -- Mk1: timber and fired clay, no iron, so it can dig out the first iron.
 recipe("ttc-mk1-bore", {{"wood", 20}, {"stone-brick", 20}, {"ttc-glass", 10}})
 -- Mk2 lays its own supply and output belt lanes and digs twice as fast.
-recipe("ttc-mk2-bore", {{"iron-plate", 20}, {"iron-gear-wheel", 20}, {"stone-brick", 10}, {"ttc-glass", 10}})
+recipe("ttc-mk2-bore", {{"iron-plate", 20}, {"iron-gear-wheel", 10}, {"stone-brick", 10}, {"ttc-glass", 10}})
 -- Mk3 digs five times as fast as a Mk1, cooled with bore coolant.
 recipe("ttc-mk3-bore", {{"ttc-mk2-bore", 1}, {"steel-plate", 50}, {"iron-gear-wheel", 40},
   {"electronic-circuit", 20}, {"pipe", 20}})
